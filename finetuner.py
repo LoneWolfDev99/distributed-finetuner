@@ -1,20 +1,22 @@
-import sys
-import os
 import logging
+import math
+import os
 import random
-import string 
-import random 
+import sys
 from dataclasses import dataclass, field
-from e2enetworks.cloud import tir
-import transformers
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig, HfArgumentParser, TrainingArguments
-from datasets import load_dataset
 from typing import Optional
-from trl import SFTTrainer, is_xpu_available
+from uuid import uuid4
+
+import transformers
+import wandb
+from datasets import load_dataset
+from e2enetworks.cloud import tir
+from e2enetworks.cloud.tir.minio_service import MinioService
 from peft import LoraConfig
 from tqdm import tqdm
-import math
-import wandb
+from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
+                          HfArgumentParser, TrainingArguments)
+from trl import SFTTrainer, is_xpu_available
 
 logger = logging.getLogger(__name__)
 
@@ -97,13 +99,29 @@ class ScriptArguments:
         },
     )
 
+
+def download_dataset(script_args) -> str:
+    try:
+        dataset_download_path = 'home/jovyan/custom_dataset/'
+        minio_service = MinioService(access_key=script_args.dataset_accesskey,
+                                     secret_key=script_args.dataset_secretkey)
+        minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
+                                                   local_path=dataset_download_path,
+                                                   prefix=script_args.dataset_path)
+        logger.info("Dataset download success")
+        return dataset_download_path
+    except Exception as e:
+        logger.error(e)
+        raise Exception(f"dataset_error -> {e}")
+
+
 def push_model(model_path: str):
     model_repo_client = tir.Models()
-    key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
-    model_repo = model_repo_client.create("llama2-{}".format(key), model_type="custom", job_id=job_id)
+    model_repo = model_repo_client.create(f"llama2-custom-{uuid4()}", model_type="custom", job_id=job_id)
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
+
 
 def main():
     
@@ -130,8 +148,11 @@ def main():
         use_auth_token=script_args.use_auth_token,
     )
 
+    # download dataset
+    dataset_path = download_dataset(script_args) if script_args.dataset_type == "eos-bucket" else script_args.dataset_name
+
     # Step 2: Load the dataset
-    train_dataset = load_dataset(script_args.dataset_name, split="train")
+    train_dataset = load_dataset(dataset_path, split="train")
     eval_dataset = None 
 
     # todo - replace with dataset_split
