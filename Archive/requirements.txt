@@ -1,9 +1,0 @@
-transformers
-datasets
-trl
-peft
-tqdm
-wandb
-tokenizers
-accelerate
-e2enetworks
