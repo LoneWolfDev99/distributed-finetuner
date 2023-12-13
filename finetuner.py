@@ -5,6 +5,7 @@ import random
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
@@ -133,9 +134,11 @@ def retry_push_model(func_object):
 def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
-    model_repo = model_repo_client.create(f"llama2-custom-{uuid4()}", model_type="custom", job_id=job_id, score=info)
+    timestamp = datetime.now().strftime("%s")
+    model_repo = model_repo_client.create(f"llama2-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
+    raise Exception("hi")
 
 
 def main():
