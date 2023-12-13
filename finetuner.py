@@ -78,7 +78,7 @@ class ScriptArguments:
         },
     )
     run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
-    auto_find_batch_size: Optional[str] =field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
+    auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
     wandb_key: Optional[str] = field(default=None, metadata={"help": "wandb key"})
     wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
     max_train_samples: Optional[int] = field(
@@ -118,10 +118,7 @@ def download_dataset(script_args) -> str:
 
 def retry_push_model(func_object):
     def wrapper(*args, **kwargs):
-        done = False
-        errors = []
-        i = 1
-        for i in range(3) :
+        for i in range(3):
             try:
                 func_object(*args, **kwargs)
                 break
@@ -146,7 +143,7 @@ def main():
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
-    print("script_args:", output )
+    print("script_args:", output)
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -156,8 +153,8 @@ def main():
 
     logger.setLevel(logging.INFO)
     logger.info(f"Script parameters {script_args}")
-    
-    # initiate tir 
+
+    # initiate tir
     tir.init()
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -171,12 +168,12 @@ def main():
 
     # Step 2: Load the dataset
     train_dataset = load_dataset(dataset_path, split="train")
-    eval_dataset = None 
+    eval_dataset = None
 
     # todo - replace with dataset_split
-    #print("dataset_split:", script_args.dataset_split)
+    # print("dataset_split:", script_args.dataset_split)
     if script_args.dataset_split < 1:
-        dataset=train_dataset.train_test_split(test_size=script_args.dataset_split)
+        dataset = train_dataset.train_test_split(test_size=script_args.dataset_split)
         train_dataset = dataset["train"]
         eval_dataset = dataset["test"]
 
@@ -185,7 +182,7 @@ def main():
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 3):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-        # 
+        #
         # train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     if eval_dataset and script_args.max_eval_samples is not None:
@@ -242,10 +239,9 @@ def main():
     )
 
     if script_args.wandb_key:
-        wandb.init(name=script_args.run_name, project=script_args.wandb_project)
-        
-    train_result = trainer.train()
+        wandb.init(name=script_args.run_name,project=script_args.wandb_project)
 
+    train_result = trainer.train()
 
     # Step 6: Save the model
     trainer.save_model(script_args.output_dir)
@@ -260,7 +256,7 @@ def main():
     trainer.save_metrics("train", metrics)
     trainer.save_state()
 
-    if eval_dataset: 
+    if eval_dataset:
         metrics = trainer.evaluate()
         max_eval_samples = script_args.max_eval_samples if script_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
@@ -276,6 +272,7 @@ def main():
 
     print(metrics)
     push_model(script_args.output_dir, metrics)
+
 
 if __name__ == "__main__":
     main()
