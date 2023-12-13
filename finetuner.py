@@ -3,6 +3,7 @@ import math
 import os
 import random
 import sys
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 from uuid import uuid4
@@ -115,16 +116,33 @@ def download_dataset(script_args) -> str:
         raise Exception(f"dataset_error -> {e}")
 
 
-def push_model(model_path: str):
+def retry_push_model(func_object):
+    def wrapper(*args, **kwargs):
+        done = False
+        errors = []
+        i = 1
+        for i in range(3) :
+            try:
+                func_object(*args, **kwargs)
+                break
+            except Exception as e:
+                logger.error(f"ERROR_DURING_PUSH_MODEL | {e}")
+                time.sleep(10)
+                continue
+    return wrapper
+
+
+@retry_push_model
+def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
-    model_repo = model_repo_client.create(f"llama2-custom-{uuid4()}", model_type="custom", job_id=job_id)
+    model_repo = model_repo_client.create(f"llama2-custom-{uuid4()}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
 
 
 def main():
-    
+
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
@@ -231,7 +249,6 @@ def main():
 
     # Step 6: Save the model
     trainer.save_model(script_args.output_dir)
-    push_model(script_args.output_dir)
     metrics = train_result.metrics
 
     max_train_samples = (
@@ -256,6 +273,9 @@ def main():
 
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
+
+    print(metrics)
+    push_model(script_args.output_dir, metrics)
 
 if __name__ == "__main__":
     main()
