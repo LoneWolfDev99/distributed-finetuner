@@ -20,6 +20,11 @@ from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
                           HfArgumentParser, TrainingArguments)
 from trl import SFTTrainer, is_xpu_available
 
+ARROW = "arrow"
+CSV = 'csv'
+JSON = 'json'
+PARQUET = 'parquet'
+ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
@@ -117,6 +122,29 @@ def download_dataset(script_args) -> str:
         raise Exception(f"dataset_error -> {e}")
 
 
+def check_file_type(file_path) -> tuple[bool, str]:
+    _, file_extension = os.path.splitext(file_path)
+    if file_extension.startswith("."):
+        file_extension = file_extension.lstrip('.').lower()
+    if file_extension in ALLOWED_FILE_TYPES:
+        return True, file_extension
+    return False, file_extension
+
+
+def get_allowed_files(dataset_folder)-> str:
+    files = []
+    for file in os.listdir(dataset_folder):
+        file_path = os.path.join(dataset_folder, file)
+        is_valid_file, file_extension = check_file_type(file_path)
+        if os.path.isfile(file_path) and is_valid_file:
+            files.append(file)
+    if not files:
+        logger.error(f"ERROR_UNSUPPORTED_FILES_GIVEN, ALLOWED_TYPES={ALLOWED_FILE_TYPES}")
+        return ""
+    logger.info(f"FILES ARE -> {files}")
+    return files[0]
+
+
 def retry_push_model(func_object):
     def wrapper(*args, **kwargs):
         for i in range(3):
@@ -165,12 +193,19 @@ def main():
         use_auth_token=script_args.use_auth_token,
     )
 
-    # download dataset
-    dataset_path = download_dataset(script_args) if script_args.dataset_type == "eos-bucket" else script_args.dataset_name
+    # download and check dataset
+    dataset_path = script_args.dataset_name
+    custom_file_type = None
+    if script_args.dataset_type == "eos-bucket":
+        dataset_path = download_dataset(script_args)
+        file = get_allowed_files(dataset_path)
+        is_valid_file, custom_file_type = check_file_type(file)
 
     # Step 2: Load the dataset
-    train_dataset = load_dataset(dataset_path, split="train")
+    train_dataset = load_dataset(dataset_path, split="train") if script_args.dataset_type == "huggingface" else \
+                    load_dataset(custom_file_type, data_files=file, split="train")
     eval_dataset = None
+    logger.info(f"SUCCESSFULLY LOADED DATASET {train_dataset}")
 
     # todo - replace with dataset_split
     # print("dataset_split:", script_args.dataset_split)
