@@ -123,6 +123,7 @@ def download_dataset(script_args) -> str:
 
 
 def check_file_type(file_path) -> tuple[bool, str]:
+    logger.info(f"file name is {file_path}")
     _, file_extension = os.path.splitext(file_path)
     if file_extension.startswith("."):
         file_extension = file_extension.lstrip('.').lower()
@@ -137,7 +138,7 @@ def get_allowed_files(dataset_folder)-> str:
         file_path = os.path.join(dataset_folder, file)
         is_valid_file, file_extension = check_file_type(file_path)
         if os.path.isfile(file_path) and is_valid_file:
-            files.append(file)
+            files.append(file_path)
     if not files:
         logger.error(f"ERROR_UNSUPPORTED_FILES_GIVEN, ALLOWED_TYPES={ALLOWED_FILE_TYPES}")
         return ""
