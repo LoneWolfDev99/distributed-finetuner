@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
+import re
+import pathlib
 
 import transformers
 import wandb
@@ -20,11 +22,6 @@ from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
                           HfArgumentParser, TrainingArguments)
 from trl import SFTTrainer, is_xpu_available
 
-ARROW = "arrow"
-CSV = 'csv'
-JSON = 'json'
-PARQUET = 'parquet'
-ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
@@ -88,7 +85,7 @@ class ScriptArguments:
     wandb_key: Optional[str] = field(default=None, metadata={"help": "wandb key"})
     wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
     max_train_samples: Optional[int] = field(
-        default=None,
+        default=-1,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of training examples to this "
@@ -97,7 +94,7 @@ class ScriptArguments:
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=None,
+        default=-1,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -105,58 +102,43 @@ class ScriptArguments:
             )
         },
     )
+    prompt_template: Optional[str] = field(default=None, metadata={"help": "prompt template"})
 
 
 def download_dataset(script_args) -> str:
     try:
-        dataset_download_path = 'home/jovyan/custom_dataset/'
+        dataset_download_path = '/home/jovyan/custom_dataset/'
         minio_service = MinioService(access_key=script_args.dataset_accesskey,
                                      secret_key=script_args.dataset_secretkey)
         minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
                                                    local_path=dataset_download_path,
                                                    prefix=script_args.dataset_path)
-        logger.info("Dataset download success")
-        return dataset_download_path
+        logger.info(f"Dataset downloaded to {dataset_download_path}{script_args.dataset_path}")
+        return f"{dataset_download_path}{script_args.dataset_path}" if script_args.dataset_path else dataset_download_path
     except Exception as e:
         logger.error(e)
         raise Exception(f"dataset_error -> {e}")
-
-
-def check_file_type(file_path) -> tuple[bool, str]:
-    logger.info(f"file name is {file_path}")
-    _, file_extension = os.path.splitext(file_path)
-    if file_extension.startswith("."):
-        file_extension = file_extension.lstrip('.').lower()
-    if file_extension in ALLOWED_FILE_TYPES:
-        return True, file_extension
-    return False, file_extension
-
-
-def get_allowed_files(dataset_folder)-> str:
-    files = []
-    for file in os.listdir(dataset_folder):
-        file_path = os.path.join(dataset_folder, file)
-        is_valid_file, file_extension = check_file_type(file_path)
-        if os.path.isfile(file_path) and is_valid_file:
-            files.append(file_path)
-    if not files:
-        logger.error(f"ERROR_UNSUPPORTED_FILES_GIVEN, ALLOWED_TYPES={ALLOWED_FILE_TYPES}")
-        return ""
-    logger.info(f"FILES ARE -> {files}")
-    return files[0]
 
 
 def retry_push_model(func_object):
     def wrapper(*args, **kwargs):
         for i in range(3):
             try:
-                func_object(*args, **kwargs)
+                return func_object(*args, **kwargs)
                 break
             except Exception as e:
                 logger.error(f"ERROR_DURING_PUSH_MODEL | {e}")
                 time.sleep(10)
                 continue
     return wrapper
+
+
+def get_dataset_format(path: str):
+
+    # function to return the file extension
+    file_extension = pathlib.Path(path).suffix
+    print(f"Dataset file {path} extension {file_extension}")
+    return "json" if file_extension[1:] in ["json", "jsonl"] else file_extension[1:]
 
 
 @retry_push_model
@@ -166,15 +148,15 @@ def push_model(model_path: str, info: dict = {}):
     timestamp = datetime.now().strftime("%s")
     model_repo = model_repo_client.create(f"llama2-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
+    
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
-
+    return True
 
 def main():
 
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
-    print("script_args:", output)
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -188,44 +170,60 @@ def main():
     # initiate tir
     tir.init()
 
+    # Step 2: Load the dataset
+    if script_args.dataset_type == "eos-bucket":
+        dataset_path = download_dataset(script_args)  
+
+        dataset_type = get_dataset_format(dataset_path)
+        logger.info(f"loading dataset from {dataset_path}")
+        train_dataset = load_dataset(dataset_type, data_files=[dataset_path], split="train")
+        
+    else:
+        logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
+        train_dataset = load_dataset(script_args.dataset_name, split="train")  
+
+    if script_args.prompt_template:
+        logger.info(f"adding text column to dataset {script_args.prompt_template}")
+        columns = re.findall(r'\[(.*?)\]', script_args.prompt_template)
+        logger.info(f"found {len(columns)} columns in prompt template. replacing them")
+        if len(columns) == 0:
+            raise Exception("invalid prompt template")
+        def prepare_prompt(example):
+            if len(columns) > 0:
+                output_text = script_args.prompt_template
+                for c in columns:
+                    output_text = output_text.replace('[{}]'.format(c), example[c])    
+                example["text"] = output_text
+            return example
+        train_dataset = train_dataset.map(prepare_prompt)
+        for index in random.sample(range(len(train_dataset)), 2):
+            logger.info(f"Sample {index} after adding text to dataset: {train_dataset[index]['text']}.")
+        
+    eval_dataset = None
+
+    if script_args.dataset_split < 1:
+        logger.info("splitting dataset")
+        dataset = train_dataset.train_test_split(test_size=script_args.dataset_split)
+        train_dataset = dataset["train"]
+        eval_dataset = dataset["test"]
+
+    if script_args.max_train_samples > 0 :
+        max_train_samples = min(len(train_dataset), script_args.max_train_samples)
+        train_dataset = train_dataset.select(range(max_train_samples))
+        for index in random.sample(range(len(train_dataset)), 1):
+            logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
+        #
+        # train_dataset = train_dataset.shuffle(seed=training_args.seed)
+
+    if eval_dataset and script_args.max_eval_samples > 0:
+        max_eval_samples = min(len(eval_dataset), script_args.max_eval_samples)
+        eval_dataset = eval_dataset.select(range(max_eval_samples))
+
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
         trust_remote_code=script_args.trust_remote_code,
         use_auth_token=script_args.use_auth_token,
     )
-
-    # download and check dataset
-    dataset_path = script_args.dataset_name
-    custom_file_type = None
-    if script_args.dataset_type == "eos-bucket":
-        dataset_path = download_dataset(script_args)
-        file = get_allowed_files(dataset_path)
-        is_valid_file, custom_file_type = check_file_type(file)
-
-    # Step 2: Load the dataset
-    train_dataset = load_dataset(dataset_path, split="train") if script_args.dataset_type == "huggingface" else \
-                    load_dataset(custom_file_type, data_files=file, split="train")
-    eval_dataset = None
-    logger.info(f"SUCCESSFULLY LOADED DATASET {train_dataset}")
-
-    # todo - replace with dataset_split
-    # print("dataset_split:", script_args.dataset_split)
-    if script_args.dataset_split < 1:
-        dataset = train_dataset.train_test_split(test_size=script_args.dataset_split)
-        train_dataset = dataset["train"]
-        eval_dataset = dataset["test"]
-
-    if script_args.max_train_samples is not None:
-        max_train_samples = min(len(train_dataset), script_args.max_train_samples)
-        train_dataset = train_dataset.select(range(max_train_samples))
-        for index in random.sample(range(len(train_dataset)), 3):
-            logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-        #
-        # train_dataset = train_dataset.shuffle(seed=training_args.seed)
-
-    if eval_dataset and script_args.max_eval_samples is not None:
-        max_eval_samples = min(len(eval_dataset), script_args.max_eval_samples)
-        eval_dataset = eval_dataset.select(range(max_eval_samples))
 
     # Step 3: Define the training arguments
     training_args = TrainingArguments(
@@ -271,9 +269,9 @@ def main():
         args=training_args,
         max_seq_length=script_args.seq_length,
         train_dataset=train_dataset,
-        dataset_text_field=script_args.dataset_text_field,
+        dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'text',
         eval_dataset=eval_dataset,
-        peft_config=peft_config,
+        peft_config=peft_config
     )
 
     if script_args.wandb_key:
@@ -286,7 +284,7 @@ def main():
     metrics = train_result.metrics
 
     max_train_samples = (
-        script_args.max_train_samples if script_args.max_train_samples is not None else len(train_dataset)
+        script_args.max_train_samples if script_args.max_train_samples > 0 else len(train_dataset)
     )
     metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
@@ -296,7 +294,7 @@ def main():
 
     if eval_dataset:
         metrics = trainer.evaluate()
-        max_eval_samples = script_args.max_eval_samples if script_args.max_eval_samples is not None else len(eval_dataset)
+        max_eval_samples = script_args.max_eval_samples if script_args.max_eval_samples > 0 else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
 
         try:
@@ -308,9 +306,10 @@ def main():
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
-    print(metrics)
-    push_model(script_args.output_dir, metrics)
-
+    logger.info(f"eval metrics {metrics}")
+    
+    if not push_model(script_args.output_dir, metrics):
+        raise Exception("failed to push model")
 
 if __name__ == "__main__":
     main()
