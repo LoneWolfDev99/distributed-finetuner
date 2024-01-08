@@ -4,12 +4,17 @@ import os
 import random
 import sys
 import time
+import base64
+import wandb
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 import re
 import pathlib
+import subprocess as sp
+import os
 
 import transformers
 import wandb
@@ -102,7 +107,15 @@ class ScriptArguments:
             )
         },
     )
-    prompt_template: Optional[str] = field(default=None, metadata={"help": "prompt template"})
+    prompt_template_base64: Optional[str] = field(default=None, metadata={"help": "prompt template in base64"})
+    resume: Optional[str] = field(default=True, metadata={"help": "resume from last checkpoint"})
+
+def gpu_memory():
+    command = "nvidia-smi --query-gpu=memory.free --format=csv"
+    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+    return memory_free_values
+
 
 
 def download_dataset(script_args) -> str:
@@ -164,6 +177,8 @@ def main():
     )
 
     logger.setLevel(logging.INFO)
+    gpufree = gpu_memory()
+    logger.info(f"starting the job. gpu memory free -  {gpufree}")
     logger.info(f"Script parameters {script_args}")
 
     # initiate tir
@@ -181,18 +196,19 @@ def main():
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
         train_dataset = load_dataset(script_args.dataset_name, split="train")  
 
-    if script_args.prompt_template:
-        logger.info(f"adding text column to dataset {script_args.prompt_template}")
-        columns = re.findall(r'\[(.*?)\]', script_args.prompt_template)
+    if script_args.prompt_template_base64:
+        prompt_template = str(base64.b64decode(script_args.prompt_template_base64))
+        logger.info(f"adding training_text column to dataset {prompt_template}")
+        columns = re.findall(r'\[(.*?)\]', prompt_template)
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
             raise Exception("invalid prompt template")
         def prepare_prompt(example):
             if len(columns) > 0:
-                output_text = script_args.prompt_template
+                output_text = prompt_template
                 for c in columns:
                     output_text = output_text.replace('[{}]'.format(c), example[c])    
-                example["text"] = output_text
+                example["training_text"] = output_text
             return example
         train_dataset = train_dataset.map(prepare_prompt)
         for index in random.sample(range(len(train_dataset)), 2):
@@ -218,10 +234,55 @@ def main():
         max_eval_samples = min(len(eval_dataset), script_args.max_eval_samples)
         eval_dataset = eval_dataset.select(range(max_eval_samples))
 
+    # Discover if we have any checkpoints to resume from.
+    if script_args.resume:
+        try:
+            output_dir_list = os.listdir(script_args.output_dir)
+            
+            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-"))>1 else 0, reverse=True )
+            if len(checkpoints) > 0:
+                last_checkpoint = checkpoints[0]
+            else:
+                logger.info("no checkpoint not found. training will start from step 0")
+        except Exception as e:
+            logger.info(f"failed to find last_checkpoint: {str(e)}")
+            last_checkpoint = None
+            raise Exception("failed to check if last checkpoint exists")
+    else:
+        last_checkpoint = None
+    
+    logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
+
+    if not script_args.wandb_key:
+        logger.warning("WANDB_API_KEY: WANDB_API_KEY not found, disabling wandb.")
+        os.environ["WANDB_DISABLED"] = "True"
+
+    
+    report_to = script_args.log_with
+
+    if not report_to and script_args.wandb_key:
+        # todo: check if main process when distributed is implemented
+        report_to = ["wandb"]
+        if last_checkpoint is not None:
+            wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
+            for run in wandb_api.runs(path=script_args.wandb_project):
+                logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
+                if run.state in ["crashed", "failed"] and run.name == script_args.run_name:
+                    logger.info(f"CHECKPOINT: Resuming {run.id}")
+                    run = wandb.init(
+                        id=run.id,
+                        project=script_args.wandb_project,
+                        resume="must",
+                        name=run.name,
+                    )
+                    break
+        else:
+            wandb.init(name=script_args.run_name,project=script_args.wandb_project)
+
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
         trust_remote_code=script_args.trust_remote_code,
-        use_auth_token=script_args.use_auth_token,
+        token=script_args.use_auth_token,
     )
 
     # Step 3: Define the training arguments
@@ -262,6 +323,8 @@ def main():
     else:
         peft_config = None
 
+    logger.info(f"initiating trainer. gpu memory free-  {gpu_memory()}")
+
     # Step 5: Define the Trainer
     trainer = SFTTrainer(
         model=model,
@@ -273,13 +336,14 @@ def main():
         peft_config=peft_config
     )
 
-    if script_args.wandb_key:
-        wandb.init(name=script_args.run_name,project=script_args.wandb_project)
-
-    train_result = trainer.train()
+    if last_checkpoint is not None:
+        train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
+    else:
+        train_result = trainer.train()
 
     # Step 6: Save the model
-    trainer.save_model(script_args.output_dir)
+    final_path = os.path.join(script_args.output_dir, "final")
+    trainer.save_model(final_path)
     metrics = train_result.metrics
 
     max_train_samples = (
