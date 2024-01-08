@@ -39,6 +39,13 @@ def download_dataset(script_args) -> str:
         raise Exception(f"dataset_error -> {e}")
 
 
+def get_dataset_format(path: str):
+    # function to return the file extension
+    file_extension = pathlib.Path(path).suffix
+    print(f"Dataset file {path} extension {file_extension}")
+    return "json" if file_extension[1:] in ["json", "jsonl"] else file_extension[1:]
+
+
 def check_file_type(file_path) -> tuple[bool, str]:
     logger.info(f"file name is {file_path}")
     _, file_extension = os.path.splitext(file_path)
@@ -88,6 +95,30 @@ def push_model(model_path: str, info: dict = {}):
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
 
 
+def load_custom_dataset(dataset_path):
+    file_type = check_file_type(dataset_path)
+    try:
+        if file_type == CSV:
+            return load_dataset(CSV, data_files=dataset_path, on_bad_lines="warn", split="train")
+        else:
+            return load_dataset(file_type, data_files=dataset_path, split="train")
+    except Exception as e:
+        logger.error(f"ERROR_IN_LOADING_DATASET={e}")
+        sys.exit(e)
+
+
+def decode_base64(text_to_encode):
+    encoded_text = base64.b64encode(text_to_encode.encode()).decode()
+    return encoded_text
+
+
+def gpu_memory():
+    command = "nvidia-smi --query-gpu=memory.free --format=csv"
+    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+    return memory_free_values
+
+
 def json_loader(file_path):
     file = open(file_path, 'r')
     json_data = json.load(file)
@@ -119,31 +150,3 @@ def arrow_loader(file_path):
     arrow_file_contents = pd.read_feather(file_path)
     for row in arrow_file_contents.iterrows():
         yield row
-
-
-def load_custom_dataset(dataset_path):
-    file_type = check_file_type(dataset_path)
-    try:
-        if file_type == CSV:
-            return load_dataset(CSV, data_files=dataset_path, on_bad_lines="warn", split="train")
-        else:
-            return load_dataset(file_type, data_files=dataset_path, split="train")
-    except Exception as e:
-        logger.error(f"ERROR_IN_LOADING_DATASET={e}")
-        sys.exit(e)
-
-def decode_base64(text_to_encode):
-    encoded_text = base64.b64encode(text_to_encode.encode()).decode()
-    return encoded_text
-
-def gpu_memory():
-    command = "nvidia-smi --query-gpu=memory.free --format=csv"
-    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
-    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
-    return memory_free_values
-
-def get_dataset_format(path: str):
-    # function to return the file extension
-    file_extension = pathlib.Path(path).suffix
-    print(f"Dataset file {path} extension {file_extension}")
-    return "json" if file_extension[1:] in ["json", "jsonl"] else file_extension[1:]
