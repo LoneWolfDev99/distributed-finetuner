@@ -212,7 +212,7 @@ def main():
             return example
         train_dataset = train_dataset.map(prepare_prompt)
         for index in random.sample(range(len(train_dataset)), 2):
-            logger.info(f"Sample {index} after adding text to dataset: {train_dataset[index]['text']}.")
+            logger.info(f"Sample {index} after adding training_text to dataset: {train_dataset[index]['training_text']}.")
         
     eval_dataset = None
 
@@ -257,7 +257,6 @@ def main():
         logger.warning("WANDB_API_KEY: WANDB_API_KEY not found, disabling wandb.")
         os.environ["WANDB_DISABLED"] = "True"
 
-    
     report_to = script_args.log_with
 
     if not report_to and script_args.wandb_key:
@@ -331,7 +330,7 @@ def main():
         args=training_args,
         max_seq_length=script_args.seq_length,
         train_dataset=train_dataset,
-        dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'text',
+        dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'training_text',
         eval_dataset=eval_dataset,
         peft_config=peft_config
     )
