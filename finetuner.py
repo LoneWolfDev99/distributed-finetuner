@@ -173,7 +173,7 @@ def main():
         eval_dataset = eval_dataset.select(range(max_eval_samples))
 
     # Discover if we have any checkpoints to resume from.
-    if script_args.resume:
+    if script_args.resume and os.path.exists(script_args.output_dir):
         try:
             output_dir_list = os.listdir(script_args.output_dir)
             checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
@@ -182,7 +182,7 @@ def main():
             else:
                 logger.info("no checkpoint not found. training will start from step 0")
         except Exception as e:
-            logger.info(f"failed to find last_checkpoint: {str(e)}")
+            logger.error(f"failed to find last_checkpoint: {str(e)}")
             last_checkpoint = None
             raise Exception("failed to check if last checkpoint exists")
     else:
