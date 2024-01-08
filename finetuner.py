@@ -19,7 +19,7 @@ from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
 from trl import SFTTrainer, is_xpu_available
 
 from helpers import (decode_base64, download_dataset, get_dataset_format,
-                     gpu_memory, load_custom_dataset)
+                     gpu_memory, load_custom_dataset, push_model)
 
 logger = logging.getLogger(__name__)
 
@@ -127,13 +127,13 @@ def main():
 
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
-        dataset_path = download_dataset(script_args)  
+        dataset_path = download_dataset(script_args)
         dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
         train_dataset = load_custom_dataset(dataset_type, data_files=[dataset_path])
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
-        train_dataset = load_dataset(script_args.dataset_name, split="train")  
+        train_dataset = load_dataset(script_args.dataset_name, split="train")
 
     if script_args.prompt_template_base64:
         prompt_template = decode_base64(script_args.prompt_template_base64)
@@ -152,7 +152,7 @@ def main():
         train_dataset = train_dataset.map(prepare_prompt)
         for index in random.sample(range(len(train_dataset)), 2):
             logger.info(f"Sample {index} after adding training_text to dataset: {train_dataset[index]['training_text']}.")
-        
+
     eval_dataset = None
 
     if script_args.dataset_split < 1:
@@ -161,7 +161,7 @@ def main():
         train_dataset = dataset["train"]
         eval_dataset = dataset["test"]
 
-    if script_args.max_train_samples > 0 :
+    if script_args.max_train_samples > 0:
         max_train_samples = min(len(train_dataset), script_args.max_train_samples)
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
@@ -177,7 +177,7 @@ def main():
     if script_args.resume:
         try:
             output_dir_list = os.listdir(script_args.output_dir)
-            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-"))>1 else 0, reverse=True )
+            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
@@ -307,9 +307,9 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     logger.info(f"eval metrics {metrics}")
-    
-    if not push_model(script_args.output_dir, metrics):
-        raise Exception("failed to push model")
+
+    push_model(script_args.output_dir, metrics)
+
 
 if __name__ == "__main__":
     main()

@@ -46,6 +46,16 @@ def get_dataset_format(path: str):
     return "json" if file_extension[1:] in ["json", "jsonl"] else file_extension[1:]
 
 
+def prepare_prompt(example, columns, prompt_template):
+            if len(columns) > 0:
+                output_text = prompt_template
+                for c in columns:
+                    output_text = output_text.replace(
+                        '[{}]'.format(c), example[c])
+                example["training_text"] = output_text
+            return example
+
+
 def check_file_type(file_path) -> tuple[bool, str]:
     logger.info(f"file name is {file_path}")
     _, file_extension = os.path.splitext(file_path)
