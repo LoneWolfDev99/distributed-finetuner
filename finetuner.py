@@ -107,7 +107,7 @@ class ScriptArguments:
 
 def download_dataset(script_args) -> str:
     try:
-        dataset_download_path = '/home/jovyan/custom_dataset/'
+        dataset_download_path = '/mnt/workspace/custom_dataset/'
         minio_service = MinioService(access_key=script_args.dataset_accesskey,
                                      secret_key=script_args.dataset_secretkey)
         minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
@@ -134,7 +134,6 @@ def retry_push_model(func_object):
 
 
 def get_dataset_format(path: str):
-
     # function to return the file extension
     file_extension = pathlib.Path(path).suffix
     print(f"Dataset file {path} extension {file_extension}")
