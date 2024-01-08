@@ -2,19 +2,10 @@ import logging
 import math
 import os
 import random
-import sys
-import time
-import base64
-import wandb
-
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional
-from uuid import uuid4
 import re
-import pathlib
-import subprocess as sp
-import os
+import sys
+from dataclasses import dataclass, field
+from typing import Optional
 
 import transformers
 import wandb
@@ -26,6 +17,9 @@ from tqdm import tqdm
 from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
                           HfArgumentParser, TrainingArguments)
 from trl import SFTTrainer, is_xpu_available
+
+from helpers import (decode_base64, download_dataset, get_dataset_format,
+                     gpu_memory, load_custom_dataset)
 
 logger = logging.getLogger(__name__)
 
@@ -110,59 +104,6 @@ class ScriptArguments:
     prompt_template_base64: Optional[str] = field(default=None, metadata={"help": "prompt template in base64"})
     resume: Optional[str] = field(default=True, metadata={"help": "resume from last checkpoint"})
 
-def gpu_memory():
-    command = "nvidia-smi --query-gpu=memory.free --format=csv"
-    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
-    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
-    return memory_free_values
-
-
-
-def download_dataset(script_args) -> str:
-    try:
-        dataset_download_path = '/mnt/workspace/custom_dataset/'
-        minio_service = MinioService(access_key=script_args.dataset_accesskey,
-                                     secret_key=script_args.dataset_secretkey)
-        minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
-                                                   local_path=dataset_download_path,
-                                                   prefix=script_args.dataset_path)
-        logger.info(f"Dataset downloaded to {dataset_download_path}{script_args.dataset_path}")
-        return f"{dataset_download_path}{script_args.dataset_path}" if script_args.dataset_path else dataset_download_path
-    except Exception as e:
-        logger.error(e)
-        raise Exception(f"dataset_error -> {e}")
-
-
-def retry_push_model(func_object):
-    def wrapper(*args, **kwargs):
-        for i in range(3):
-            try:
-                return func_object(*args, **kwargs)
-                break
-            except Exception as e:
-                logger.error(f"ERROR_DURING_PUSH_MODEL | {e}")
-                time.sleep(10)
-                continue
-    return wrapper
-
-
-def get_dataset_format(path: str):
-    # function to return the file extension
-    file_extension = pathlib.Path(path).suffix
-    print(f"Dataset file {path} extension {file_extension}")
-    return "json" if file_extension[1:] in ["json", "jsonl"] else file_extension[1:]
-
-
-@retry_push_model
-def push_model(model_path: str, info: dict = {}):
-    model_repo_client = tir.Models()
-    job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
-    timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(f"llama2-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
-    model_id = model_repo.id
-    
-    model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
-    return True
 
 def main():
 
@@ -187,17 +128,15 @@ def main():
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
         dataset_path = download_dataset(script_args)  
-
         dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
-        train_dataset = load_dataset(dataset_type, data_files=[dataset_path], split="train")
-        
+        train_dataset = load_custom_dataset(dataset_type, data_files=[dataset_path])
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
         train_dataset = load_dataset(script_args.dataset_name, split="train")  
 
     if script_args.prompt_template_base64:
-        prompt_template = str(base64.b64decode(script_args.prompt_template_base64))
+        prompt_template = decode_base64(script_args.prompt_template_base64)
         logger.info(f"adding training_text column to dataset {prompt_template}")
         columns = re.findall(r'\[(.*?)\]', prompt_template)
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
@@ -207,7 +146,7 @@ def main():
             if len(columns) > 0:
                 output_text = prompt_template
                 for c in columns:
-                    output_text = output_text.replace('[{}]'.format(c), example[c])    
+                    output_text = output_text.replace('[{}]'.format(c), example[c])
                 example["training_text"] = output_text
             return example
         train_dataset = train_dataset.map(prepare_prompt)
@@ -238,7 +177,6 @@ def main():
     if script_args.resume:
         try:
             output_dir_list = os.listdir(script_args.output_dir)
-            
             checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-"))>1 else 0, reverse=True )
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
@@ -250,7 +188,7 @@ def main():
             raise Exception("failed to check if last checkpoint exists")
     else:
         last_checkpoint = None
-    
+
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
 
     if not script_args.wandb_key:
