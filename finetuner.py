@@ -11,7 +11,6 @@ import transformers
 import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
-from e2enetworks.cloud.tir.minio_service import MinioService
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
