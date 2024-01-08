@@ -2,22 +2,15 @@ import base64
 import csv
 import json
 import logging
-import math
 import os
 import pathlib
-import random
-import re
 import subprocess as sp
 import sys
 import time
-from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
-from uuid import uuid4
 
 import pandas as pd
 import pyarrow.parquet as parquet
-import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
@@ -33,14 +26,14 @@ logger = logging.getLogger(__name__)
 
 def download_dataset(script_args) -> str:
     try:
-        DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
+        DATASET_DOWNLOAD_PATH = '/mnt/workspace/custom_dataset/'
         minio_service = MinioService(access_key=script_args.dataset_accesskey,
                                      secret_key=script_args.dataset_secretkey)
         minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
                                                    local_path=DATASET_DOWNLOAD_PATH,
                                                    prefix=script_args.dataset_path)
         logger.info("Dataset download success")
-        return DATASET_DOWNLOAD_PATH
+        return f"{DATASET_DOWNLOAD_PATH}{script_args.dataset_path}" if script_args.dataset_path else DATASET_DOWNLOAD_PATH
     except Exception as e:
         logger.error(e)
         raise Exception(f"dataset_error -> {e}")
@@ -70,20 +63,22 @@ def get_allowed_files(dataset_folder)-> str:
     return files[0]
 
 
-def retry_push_model(func_object):
+def retry_decorator(func_object):
     def wrapper(*args, **kwargs):
         for i in range(3):
             try:
                 func_object(*args, **kwargs)
                 break
             except Exception as e:
-                logger.error(f"ERROR_DURING_PUSH_MODEL | {e}")
+                logger.error(f"OOPS_AN_ERROR_OCCURRED | {e}")
+                if i == 2:
+                    raise e
                 time.sleep(10)
                 continue
     return wrapper
 
 
-@retry_push_model
+@retry_decorator
 def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
