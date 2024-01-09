@@ -106,7 +106,7 @@ def push_model(model_path: str, info: dict = {}):
 
 
 def load_custom_dataset(dataset_path):
-    file_type = check_file_type(dataset_path)
+    file_type = get_dataset_format(dataset_path)
     try:
         if file_type == CSV:
             return load_dataset(CSV, data_files=dataset_path, on_bad_lines="warn", split="train")
