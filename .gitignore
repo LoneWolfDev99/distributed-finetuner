@@ -5,6 +5,7 @@ __pycache__/
 
 # ignore env
 fintuner_env/
+.DS_Store
 
 # C extensions
 *.so
