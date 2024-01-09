@@ -129,7 +129,7 @@ def main():
         dataset_path = download_dataset(script_args)
         dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
-        train_dataset = load_custom_dataset(dataset_type, data_files=[dataset_path])
+        train_dataset = load_custom_dataset(dataset_path)
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
         train_dataset = load_dataset(script_args.dataset_name, split="train")
