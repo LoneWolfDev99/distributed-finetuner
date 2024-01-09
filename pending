@@ -1,9 +1,0 @@
-
-- dataset download
-- PVC 
-- Check if CPU and RAM is being correctly used as per selection and not defaulted 
-- push model
-- save steps in the UI and save limit ? 
-- gradient checkpointing?
-- multi-gpu support 
-- need to add eval every epoch. currently we only eval at the end 
