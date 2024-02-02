@@ -17,23 +17,25 @@ spec:
   arguments:
     parameters:
     - name: workspace_pvc_class
-      value: 'csi-rbd-sc' 
+      value: 'csi-rbd-sc'
     - name: hf_api_token
       value: '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'
     - name: e2e_tir_access_token
-      value: 'eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJGSjg2R2NGM2pUYk5MT2NvNE52WmtVQ0lVbWZZQ3FvcXRPUWVNZmJoTmxFIn0.eyJleHAiOjE3MTc3NDc5NDYsImlhdCI6MTY4NjIxMTk0NiwianRpIjoiM2MwM2NkNTYtNDJkMC00OTc2LTk3ZGItNDdjZTRhYzA3ZjNmIiwiaXNzIjoiaHR0cDovL2dhdGV3YXkuZTJlbmV0d29ya3MuY29tL2F1dGgvcmVhbG1zL2FwaW1hbiIsImF1ZCI6ImFjY291bnQiLCJzdWIiOiI2YTcwNDgzNC1hZmI0LTRlNTYtODM0Yi02NDc5ZDgzM2U0NzEiLCJ0eXAiOiJCZWFyZXIiLCJhenAiOiJhcGltYW51aSIsInNlc3Npb25fc3RhdGUiOiI1M2EyMzFmYi1lZmExLTQwYjMtYTg5Ni01MDNlMzUzZWU5YWYiLCJhY3IiOiIxIiwiYWxsb3dlZC1vcmlnaW5zIjpbIiJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJ1bWFfYXV0aG9yaXphdGlvbiIsImFwaXVzZXIiLCJkZWZhdWx0LXJvbGVzLWFwaW1hbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsInNpZCI6IjUzYTIzMWZiLWVmYTEtNDBiMy1hODk2LTUwM2UzNTNlZTlhZiIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwibmFtZSI6IkFtb2wgVW1iYXJrYXIiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJhbW9sLnVtYmFya2FyQGUyZW5ldHdvcmtzLmNvbSIsImdpdmVuX25hbWUiOiJBbW9sIiwiZmFtaWx5X25hbWUiOiJVbWJhcmthciIsImVtYWlsIjoiYW1vbC51bWJhcmthckBlMmVuZXR3b3Jrcy5jb20ifQ.ihLB4woQAr7XQ_Px6WK9JqYTjQ8L0smzBda1vgTBgQK79z8Rj0mBahR2x1f8gqKWtAv5lG68o5R-a0rotaDtXN1h78_iKA0qxPhUFjbD5aemAizf-4Z3XKPEf0mr1c8QNpSEIi2Jb1Cgc4cLuFIAQ8Ngr8RYqprau-QrHHsGTuA'
+      value: ''
     - name: e2e_tir_api_key
-      value: '620ccfe2-7f01-4fbc-bdcc-b1536f6d1c84'
+      value: ''
     - name: e2e_tir_project_id
-      value: '1445'
+      value: ''
     - name: e2e_tir_team_id
-      value: '8'
+      value: ''
     - name: e2e_tir_finetune_job_id
-      value: '2323'
+      value: ''
+    - name: e2e_tir_api_host
+      value: ''
     # run_name should be unique on a per-run basis, especially if reporting
     # to wandb or sharing PVCs between runs.
     - name: run_name
-      value: 'llama2'
+      value: 'mistral'
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
     # or a path to your model relative to the PVC root.
     - name: model
@@ -48,13 +50,15 @@ spec:
       value: ''
     - name: dataset_path
       value: ''
-    - name: dataset_accesskey 
-      value: '' 
-    - name: dataset_secretkey 
-      value: '' 
+    - name: dataset_accesskey
+      value: ''
+    - name: dataset_secretkey
+      value: ''
     - name: dataset_split
       value: 1
     - name: batch_size
+      value: 1
+    - name: gradient_accumulation_steps
       value: 1
     - name: seq_length
       value: 512
@@ -112,8 +116,10 @@ spec:
       value: '/mnt/workspace/hf'
     - name: output_dir
       value: '/mnt/workspace/finetunes/'
-    - name: prompt_template
+    - name: prompt_template_base64
       value: ''
+    - name: resume
+      value: True
   templates:
   - name: main
     steps:
@@ -136,6 +142,7 @@ spec:
               --output_dir={{workflow.parameters.output_dir}}
               --num_train_epochs={{workflow.parameters.num_train_epochs}}
               --batch_size={{workflow.parameters.batch_size}}
+              --gradient_accumulation_steps={{workflow.parameters.gradient_accumulation_steps}}
               --use_peft={{workflow.parameters.use_peft}}
               --peft_lora_r={{workflow.parameters.peft_lora_r}}
               --peft_lora_alpha={{workflow.parameters.peft_lora_alpha}}
@@ -144,7 +151,8 @@ spec:
               --save_total_limit={{workflow.parameters.save_total_limit}}
               --max_train_samples={{workflow.parameters.max_train_samples}}
               --max_eval_samples={{workflow.parameters.max_eval_samples}}
-              --prompt_template={{workflow.parameters.prompt_template}}
+              --prompt_template_base64={{workflow.parameters.prompt_template_base64}}
+              --resume={{workflow.parameters.resume}}
           - name: wandb_key
             value: "{{workflow.parameters.wandb_key}}"
           - name: trainer_ram
@@ -161,12 +169,14 @@ spec:
             value: "{{workflow.parameters.e2e_tir_access_token}}"
           - name:  e2e_tir_api_key
             value: "{{workflow.parameters.e2e_tir_api_key}}"
+          - name:  e2e_tir_api_host
+            value: "{{workflow.parameters.e2e_tir_api_host}}"
           - name: e2e_tir_project_id
             value: "{{workflow.parameters.e2e_tir_project_id}}"
           - name: e2e_tir_team_id
             value: "{{workflow.parameters.e2e_tir_team_id}}"
           - name: e2e_tir_finetune_job_id
-            value: "{{workflow.parameters.e2e_tir_finetune_job_id}}"  
+            value: "{{workflow.parameters.e2e_tir_finetune_job_id}}"
   - name: model-finetuner
     inputs:
       parameters:
@@ -179,6 +189,7 @@ spec:
         - name: transformers_cache
         - name: e2e_tir_access_token
         - name: e2e_tir_api_key
+        - name: e2e_tir_api_host
         - name: e2e_tir_project_id
         - name: e2e_tir_team_id
         - name: e2e_tir_finetune_job_id
@@ -221,14 +232,14 @@ spec:
         value: "{{inputs.parameters.e2e_tir_access_token}}"
       - name: E2E_TIR_API_KEY
         value: "{{inputs.parameters.e2e_tir_api_key}}"
+      - name: E2E_TIR_API_HOST
+        value: "{{inputs.parameters.e2e_tir_api_host}}"
       - name: E2E_TIR_PROJECT_ID
         value: "{{inputs.parameters.e2e_tir_project_id}}"
       - name: E2E_TIR_TEAM_ID
         value: "{{inputs.parameters.e2e_tir_team_id}}"
       - name: E2E_TIR_FINETUNE_JOB_ID
         value: "{{inputs.parameters.e2e_tir_finetune_job_id}}"
-      - name: E2E_TIR_API_HOST
-        value: ""
       - name: TRANSFORMERS_NO_ADVISORY_WARNINGS
         value: "1"
       resources:
