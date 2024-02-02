@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: "finetune-mistral-"
+  generateName: "finetune-mistral7B"
 spec:
   entrypoint: main
   serviceAccountName: default-editor
@@ -35,7 +35,7 @@ spec:
     # run_name should be unique on a per-run basis, especially if reporting
     # to wandb or sharing PVCs between runs.
     - name: run_name
-      value: 'mistral'
+      value: 'mistral-7B'
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
     # or a path to your model relative to the PVC root.
     - name: model
