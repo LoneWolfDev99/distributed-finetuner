@@ -6,7 +6,7 @@ import sys
 import time
 import base64
 import wandb
-import torch 
+import torch
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -111,12 +111,12 @@ class ScriptArguments:
     prompt_template_base64: Optional[str] = field(default=None, metadata={"help": "prompt template in base64"})
     resume: Optional[str] = field(default=True, metadata={"help": "resume from last checkpoint"})
 
+
 def gpu_memory():
     command = "nvidia-smi --query-gpu=memory.free --format=csv"
     memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
     memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
     return memory_free_values
-
 
 
 def download_dataset(script_args) -> str:
@@ -139,7 +139,6 @@ def retry_push_model(func_object):
         for i in range(3):
             try:
                 return func_object(*args, **kwargs)
-                break
             except Exception as e:
                 logger.error(f"ERROR_DURING_PUSH_MODEL | {e}")
                 time.sleep(10)
@@ -160,14 +159,14 @@ def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(f"llama2-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+    model_repo = model_repo_client.create(f"mistral-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
-    
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
 
+
 def main():
-    
+
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
@@ -186,18 +185,17 @@ def main():
     # initiate tir
     tir.init()
 
-
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
-        dataset_path = download_dataset(script_args)  
+        dataset_path = download_dataset(script_args)
 
         dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
         train_dataset = load_dataset(dataset_type, data_files=[dataset_path], split="train")
-        
+
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
-        train_dataset = load_dataset(script_args.dataset_name, split="train")  
+        train_dataset = load_dataset(script_args.dataset_name, split="train")
 
     if script_args.prompt_template_base64:
         prompt_template = str(base64.b64decode(script_args.prompt_template_base64))
@@ -206,17 +204,18 @@ def main():
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
             raise Exception("invalid prompt template")
+
         def prepare_prompt(example):
             if len(columns) > 0:
                 output_text = prompt_template
                 for c in columns:
-                    output_text = output_text.replace('[{}]'.format(c), example[c])    
+                    output_text = output_text.replace('[{}]'.format(c), example[c])
                 example["text"] = output_text
             return example
         train_dataset = train_dataset.map(prepare_prompt)
         for index in random.sample(range(len(train_dataset)), 2):
             logger.info(f"Sample {index} after adding text to dataset: {train_dataset[index]['text']}.")
-        
+
     eval_dataset = None
 
     if script_args.dataset_split < 1:
@@ -225,7 +224,7 @@ def main():
         train_dataset = dataset["train"]
         eval_dataset = dataset["test"]
 
-    if script_args.max_train_samples > 0 :
+    if script_args.max_train_samples > 0:
         max_train_samples = min(len(train_dataset), script_args.max_train_samples)
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
@@ -243,8 +242,7 @@ def main():
 
             output_dir_list = os.listdir(script_args.output_dir)
 
-            
-            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-"))>1 else 0, reverse=True )
+            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
@@ -258,14 +256,13 @@ def main():
             raise Exception("failed to check if last checkpoint exists")
     else:
         last_checkpoint = None
-    
+
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
 
     if not script_args.wandb_key:
         logger.warning("WANDB_API_KEY: WANDB_API_KEY not found, disabling wandb.")
         os.environ["WANDB_DISABLED"] = "True"
 
-    
     report_to = script_args.log_with
 
     if not report_to and script_args.wandb_key:
@@ -285,7 +282,7 @@ def main():
                     )
                     break
         else:
-            wandb.init(name=script_args.run_name,project=script_args.wandb_project)
+            wandb.init(name=script_args.run_name, project=script_args.wandb_project)
 
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
@@ -313,10 +310,9 @@ def main():
         result["labels"] = result["input_ids"].copy()
 
         return result
-    
+
     tokenized_train_dataset = train_dataset.map(tokenize)
     tokenized_eval_dataset = eval_dataset.map(tokenize) if eval_dataset else eval_dataset
-
 
     # Step 3: Define the training arguments
     training_args = TrainingArguments(
@@ -362,7 +358,6 @@ def main():
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         model.is_parallelizable = True
         model.model_parallel = True
-
 
     # Step 5: Define the Trainer
     trainer = SFTTrainer(
@@ -411,9 +406,10 @@ def main():
         trainer.save_metrics("eval", metrics)
 
     logger.info(f"eval metrics {metrics}")
-    
+
     if not push_model(script_args.output_dir, metrics):
         raise Exception("failed to push model")
+
 
 if __name__ == "__main__":
     main()
