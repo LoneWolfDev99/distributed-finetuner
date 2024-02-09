@@ -159,7 +159,7 @@ def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(f"mistral7B-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+    model_repo = model_repo_client.create(f"mistral7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
