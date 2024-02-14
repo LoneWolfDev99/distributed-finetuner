@@ -13,12 +13,14 @@ spec:
         argocd.argoproj.io/sync-options: Delete=false
     spec:
       accessModes: [ "ReadWriteOnce" ]
-      storageClassName: csi-rbd-sc
+      storageClassName: "{{workflow.parameters.pvc_class}}"
       resources:
         requests:
           storage: 500Gi
   arguments:
     parameters:
+    - name: pvc_class
+      value: 'csi-rbd-sc'
     - name: hf_api_token
       value: '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'
     - name: e2e_tir_access_token
@@ -93,7 +95,7 @@ spec:
     - name: finetuner_image
       value: 'aimle2e/fine-tuner'
     - name: finetuner_tag
-      value: 'v4'
+      value: 'llama2_v1'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
@@ -166,6 +168,8 @@ spec:
             value: "{{workflow.parameters.torch_cache}}"
           - name: transformers_cache
             value: "{{workflow.parameters.transformers_cache}}"
+          - name: hf_api_token
+            value: "{{workflow.parameters.hf_api_token}}"
           - name: e2e_tir_access_token
             value: "{{workflow.parameters.e2e_tir_access_token}}"
           - name:  e2e_tir_api_key
@@ -184,6 +188,7 @@ spec:
         - name: finetuner_params
         - name: wandb_key
         - name: torch_cache
+        - name: hf_api_token
         - name: trainer_ram
         - name: trainer_cores
         - name: trainer_gpus
@@ -224,9 +229,9 @@ spec:
       - name: TORCH_EXTENSIONS_DIR
         value: "{{inputs.parameters.torch_cache}}"
       - name: HF_API_TOKEN
-        value: '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'
+        value: "{{inputs.parameters.hf_api_token}}"
       - name: HF_TOKEN
-        value: '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'
+        value: "{{inputs.parameters.hf_api_token}}"
       - name: HF_HOME
         value: "{{inputs.parameters.transformers_cache}}"   
       - name: E2E_TIR_ACCESS_TOKEN
