@@ -7,7 +7,6 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
-import transformers
 import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir

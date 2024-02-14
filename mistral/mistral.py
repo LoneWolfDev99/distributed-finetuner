@@ -11,7 +11,6 @@ import torch
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
-from uuid import uuid4
 import re
 import pathlib
 import subprocess as sp
