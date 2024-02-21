@@ -10,5 +10,5 @@ COPY requirements.txt /home/jovyan/
 RUN cd /home/jovyan && pip install -r requirements.txt
 
 COPY finetuner.py /home/jovyan/finetuner.py
-
+COPY helpers.py /home/jovyan/helpers.py
 CMD [ "python3", "finetuner.py" ]
