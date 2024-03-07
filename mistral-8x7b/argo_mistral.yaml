@@ -1,0 +1,271 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: "finetune-mistral8x7b-"
+spec:
+  entrypoint: main
+  serviceAccountName: default-editor
+  volumeClaimTemplates:
+  - metadata:
+      name: workspace
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "{{workflow.parameters.workspace_pvc_class}}"
+      resources:
+        requests:
+          storage: 500Gi
+  arguments:
+    parameters:
+    - name: workspace_pvc_class
+      value: 'csi-rbd-sc'
+    - name: hf_api_token
+      value: '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'
+    - name: e2e_tir_access_token
+      value: 'eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJGSjg2R2NGM2pUYk5MT2NvNE52WmtVQ0lVbWZZQ3FvcXRPUWVNZmJoTmxFIn0.eyJleHAiOjE3Mzg5OTA4ODcsImlhdCI6MTcwNzQ1NDg4NywianRpIjoiMjJkZDk1ZTEtOTMzMy00MDQ2LTliMTktNjAxY2ZmZmFmYjIxIiwiaXNzIjoiaHR0cDovL2dhdGV3YXkuZTJlbmV0d29ya3MuY29tL2F1dGgvcmVhbG1zL2FwaW1hbiIsImF1ZCI6ImFjY291bnQiLCJzdWIiOiJhY2YzN2ZhOS1jZmIwLTQyNzktYjcwZi03Mjc0MDU0ZjQxZmQiLCJ0eXAiOiJCZWFyZXIiLCJhenAiOiJhcGltYW51aSIsInNlc3Npb25fc3RhdGUiOiI2YjQ4YjU4OS00YjU3LTRkZWMtYTU2My1lMDg4ZTU2NzYyYWMiLCJhY3IiOiIxIiwiYWxsb3dlZC1vcmlnaW5zIjpbIiJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJ1bWFfYXV0aG9yaXphdGlvbiIsImFwaXVzZXIiLCJkZWZhdWx0LXJvbGVzLWFwaW1hbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsInNpZCI6IjZiNDhiNTg5LTRiNTctNGRlYy1hNTYzLWUwODhlNTY3NjJhYyIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwibmFtZSI6IkRldmFuc2ggSmFpbiIsInByaW1hcnlfZW1haWwiOiJkZXZhbnNoLmphaW5AZTJlbmV0d29ya3MuY29tIiwiaXNfcHJpbWFyeV9jb250YWN0Ijp0cnVlLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJkZXZhbnNoLmphaW5AZTJlbmV0d29ya3MuY29tIiwiZ2l2ZW5fbmFtZSI6IkRldmFuc2giLCJmYW1pbHlfbmFtZSI6IkphaW4iLCJlbWFpbCI6ImRldmFuc2guamFpbkBlMmVuZXR3b3Jrcy5jb20ifQ.IJHRbrumvTq6q2D_HYLV2MNSKXuj1pG9Clfvb3yUK21kDm4K939qxyviAnxsaNGDf_uVBntirLVYB-ipr0q5u0FCB6JTsH9LXtchN-_KZY3lpa0jOugAiafqE_WSz7lzOntr-kpsBzOVSMvN_eNqIVjo-5oUgK7k3rgSh2IPCY0'
+    - name: e2e_tir_api_key
+      value: 'e23153c7-c992-49d4-bffe-3abeed3a94ab'
+    - name: e2e_tir_project_id
+      value: '2164'
+    - name: e2e_tir_team_id
+      value: ''
+    - name: e2e_tir_finetune_job_id
+      value: ''
+    - name: e2e_tir_api_host
+      value: ''
+    # run_name should be unique on a per-run basis, especially if reporting
+    # to wandb or sharing PVCs between runs.
+    - name: run_name
+      value: 'mistral-8x7b'
+    # Training parameters. Model IDs are HuggingFace identifiers to pull down,
+    # or a path to your model relative to the PVC root.
+    - name: model
+      value: 'mistralai/Mixtral-8x7B-v0.1'
+    - name: dataset_name
+      value: 'gem/viggo'
+    - name: dataset_text_field
+      value: 'text'
+    - name: dataset_type
+      value: 'huggingface' # can be tir-dataset, eos-bucket as well
+    - name: dataset_bucket
+      value: ''
+    - name: dataset_path
+      value: ''
+    - name: dataset_accesskey
+      value: ''
+    - name: dataset_secretkey
+      value: ''
+    - name: dataset_split
+      value: 1
+    - name: batch_size
+      value: 1
+    - name: gradient_accumulation_steps
+      value: 1
+    - name: seq_length
+      value: 512
+    - name: num_train_epochs
+      value: 1
+    - name: max_steps
+      value: -1
+    - name: save_steps
+      value: 100
+    - name: save_total_limit
+      value: 10
+    - name: use_peft
+      value: 'true'
+    - name: peft_lora_r
+      value: 8
+    - name: peft_lora_alpha
+      value: 16
+    - name: trust_remote_code
+      value: 'false'
+    - name: use_auth_token
+      value: 'true'
+    - name: trainer_ram
+      value: 100
+    - name: trainer_gpus
+      value: 1
+    # Training number of CPU cores
+    - name: trainer_cores
+      value: 8
+    - name: ephemeral_storage
+      value: 99
+    - name: finetuner_image
+      value: 'devanshjain0707/mistral-8x7b-finetuner'
+    - name: finetuner_tag
+      value: 'latest'
+    - name: finetuner_image_policy
+      value: 'Always'
+    - name: sku_type
+      value: 'a100'
+    # WandB token.
+    - name: wandb_key
+      value: ''
+    - name: wandb_project
+      value: ''
+    - name: learning_rate
+      value: 2e-5 # ~10x smaller than Mistral's learning rate
+    - name: max_train_samples
+      value: 10
+    - name: max_eval_samples
+      value: 10
+    - name: workspace
+      value: '/mnt/workspace'
+    - name: torch_cache
+      value: '/mnt/workspace/torch'
+    - name: transformers_cache
+      value: '/mnt/workspace/hf'
+    - name: output_dir
+      value: '/mnt/workspace/finetunes/'
+    - name: prompt_template_base64
+      value: ''
+    - name: resume
+      value: True
+  templates:
+  - name: main
+    steps:
+    - - name: finetuner
+        template: model-finetuner
+        arguments:
+          parameters:
+          - name: finetuner_params
+            # Pass the params in as one string so we can template in the conditional flags
+            value: >-
+              --model_name={{workflow.parameters.model}}
+              --dataset_name={{workflow.parameters.dataset_name}}
+              --dataset_text_field={{workflow.parameters.dataset_text_field}}
+              --dataset_split={{workflow.parameters.dataset_split}}
+              --dataset_type={{workflow.parameters.dataset_type}}
+              --dataset_bucket={{workflow.parameters.dataset_bucket}}
+              --dataset_path={{workflow.parameters.dataset_path}}
+              --dataset_accesskey={{workflow.parameters.dataset_accesskey}}
+              --dataset_secretkey={{workflow.parameters.dataset_secretkey}}
+              --output_dir={{workflow.parameters.output_dir}}
+              --num_train_epochs={{workflow.parameters.num_train_epochs}}
+              --batch_size={{workflow.parameters.batch_size}}
+              --gradient_accumulation_steps={{workflow.parameters.gradient_accumulation_steps}}
+              --use_peft={{workflow.parameters.use_peft}}
+              --peft_lora_r={{workflow.parameters.peft_lora_r}}
+              --peft_lora_alpha={{workflow.parameters.peft_lora_alpha}}
+              --max_steps={{workflow.parameters.max_steps}}
+              --save_steps={{workflow.parameters.save_steps}}
+              --save_total_limit={{workflow.parameters.save_total_limit}}
+              --max_train_samples={{workflow.parameters.max_train_samples}}
+              --max_eval_samples={{workflow.parameters.max_eval_samples}}
+              --prompt_template_base64={{workflow.parameters.prompt_template_base64}}
+              --resume={{workflow.parameters.resume}}
+          - name: wandb_key
+            value: "{{workflow.parameters.wandb_key}}"
+          - name: trainer_ram
+            value: "{{workflow.parameters.trainer_ram}}"
+          - name: trainer_cores
+            value: "{{workflow.parameters.trainer_cores}}"
+          - name: trainer_gpus
+            value: "{{workflow.parameters.trainer_gpus}}"
+          - name: torch_cache
+            value: "{{workflow.parameters.torch_cache}}"
+          - name: transformers_cache
+            value: "{{workflow.parameters.transformers_cache}}"
+          - name: e2e_tir_access_token
+            value: "{{workflow.parameters.e2e_tir_access_token}}"
+          - name:  e2e_tir_api_key
+            value: "{{workflow.parameters.e2e_tir_api_key}}"
+          - name:  e2e_tir_api_host
+            value: "{{workflow.parameters.e2e_tir_api_host}}"
+          - name: e2e_tir_project_id
+            value: "{{workflow.parameters.e2e_tir_project_id}}"
+          - name: e2e_tir_team_id
+            value: "{{workflow.parameters.e2e_tir_team_id}}"
+          - name: e2e_tir_finetune_job_id
+            value: "{{workflow.parameters.e2e_tir_finetune_job_id}}"
+  - name: model-finetuner
+    inputs:
+      parameters:
+        - name: finetuner_params
+        - name: wandb_key
+        - name: torch_cache
+        - name: trainer_ram
+        - name: trainer_cores
+        - name: trainer_gpus
+        - name: transformers_cache
+        - name: e2e_tir_access_token
+        - name: e2e_tir_api_key
+        - name: e2e_tir_api_host
+        - name: e2e_tir_project_id
+        - name: e2e_tir_team_id
+        - name: e2e_tir_finetune_job_id
+    podSpecPatch: |
+      containers:
+        - name: main
+          resources:
+            requests:
+              memory: "{{workflow.parameters.trainer_ram}}Gi"
+              cpu: "{{workflow.parameters.trainer_cores}}"
+              nvidia.com/gpu: "{{workflow.parameters.trainer_gpus}}"
+              ephemeral-storage: {{workflow.parameters.ephemeral_storage}}Gi
+            limits:
+              memory: "{{workflow.parameters.trainer_ram}}Gi"
+              cpu: "{{workflow.parameters.trainer_cores}}"
+              nvidia.com/gpu: "{{workflow.parameters.trainer_gpus}}"
+              ephemeral-storage: {{workflow.parameters.ephemeral_storage}}Gi
+    container:
+      image: "{{workflow.parameters.finetuner_image}}:{{workflow.parameters.finetuner_tag}}"
+      imagePullPolicy: "{{workflow.parameters.finetuner_image_policy}}"
+      command: ["/usr/bin/bash", "-c"]
+      args: ["python3 /home/jovyan/mistral-8x7b.py {{inputs.parameters.finetuner_params}}"]
+      tty: true
+      env:
+      - name: WANDB_API_KEY
+        value: "{{inputs.parameters.wandb_key}}"
+      - name: WANDB_LOG_MODEL
+        value: "false"
+      - name: PYTHONUNBUFFERED
+        value: "1"
+      - name: TORCH_EXTENSIONS_DIR
+        value: "{{inputs.parameters.torch_cache}}"
+      - name: HF_API_TOKEN
+        value: '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'
+      - name: HF_TOKEN
+        value: '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'
+      - name: HF_HOME
+        value: "{{inputs.parameters.transformers_cache}}"   
+      - name: E2E_TIR_ACCESS_TOKEN
+        value: "{{inputs.parameters.e2e_tir_access_token}}"
+      - name: E2E_TIR_API_KEY
+        value: "{{inputs.parameters.e2e_tir_api_key}}"
+      - name: E2E_TIR_API_HOST
+        value: "{{inputs.parameters.e2e_tir_api_host}}"
+      - name: E2E_TIR_PROJECT_ID
+        value: "{{inputs.parameters.e2e_tir_project_id}}"
+      - name: E2E_TIR_TEAM_ID
+        value: "{{inputs.parameters.e2e_tir_team_id}}"
+      - name: E2E_TIR_FINETUNE_JOB_ID
+        value: "{{inputs.parameters.e2e_tir_finetune_job_id}}"
+      - name: TRANSFORMERS_NO_ADVISORY_WARNINGS
+        value: "1"
+      resources:
+        requests:
+          memory: 100Gi
+          cpu: 6
+          nvidia.com/gpu: 1
+        limits:
+          memory: 100Gi
+          cpu: 8
+          nvidia.com/gpu: 1
+      volumeMounts:
+        - name: workspace
+          mountPath: "{{workflow.parameters.workspace}}"
+        - name: dshm
+          mountPath: /dev/shm
+    volumes:
+      - emptyDir:
+          medium: Memory
+        name: dshm
+    # affinity:
+    #   nodeAffinity:
+    #     requiredDuringSchedulingIgnoredDuringExecution:
+    #       nodeSelectorTerms:
+    #         - matchExpressions:
+    #             - key: worker_type
+    #               operator: In
+    #               values:
+    #                 - "{{workflow.parameters.sku_type}}"
