@@ -11,18 +11,19 @@ import time
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
-import transformers
 
-import matplotlib.pyplot
-import torch
 import wandb
+import torch
+import transformers
 from accelerate import Accelerator, FullyShardedDataParallelPlugin
 from datasets import load_dataset
+from e2enetworks.cloud import tir
+from e2enetworks.cloud.tir.minio_service import MinioService
 from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from tqdm import tqdm
-from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForLanguageModeling, HfArgumentParser, TrainingArguments)
+from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+                          DataCollatorForLanguageModeling, HfArgumentParser, TrainingArguments)
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
-
 
 
 logger = logging.getLogger(__name__)
@@ -386,7 +387,7 @@ def main():
         auto_find_batch_size=script_args.auto_find_batch_size,
         fp16=True, 
         optim="paged_adamw_8bit",
-        report_to="wandb",
+        # report_to="wandb",
     )
     
     #Step 7: Define the Trainer
