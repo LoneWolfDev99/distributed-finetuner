@@ -27,11 +27,11 @@ spec:
     - name: e2e_tir_project_id
       value: '2164'
     - name: e2e_tir_team_id
-      value: ''
+      value: '1845'
     - name: e2e_tir_finetune_job_id
-      value: ''
+      value: '234'
     - name: e2e_tir_api_host
-      value: ''
+      value: 'api.e2enetworks.com/myaccount/'
     # run_name should be unique on a per-run basis, especially if reporting
     # to wandb or sharing PVCs between runs.
     - name: run_name
@@ -43,7 +43,7 @@ spec:
     - name: dataset_name
       value: 'gem/viggo'
     - name: dataset_text_field
-      value: 'text'
+      value: 'target'
     - name: dataset_type
       value: 'huggingface' # can be tir-dataset, eos-bucket as well
     - name: dataset_bucket
@@ -96,7 +96,7 @@ spec:
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
-      value: 'a100'
+      value: ''
     # WandB token.
     - name: wandb_key
       value: ''

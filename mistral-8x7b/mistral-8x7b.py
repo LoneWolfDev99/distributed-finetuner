@@ -73,7 +73,7 @@ class ScriptArguments:
     batch_size: Optional[int] = field(default=1, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
     gradient_accumulation_steps: Optional[int] = field(
-        default=16, metadata={"help": "the number of gradient accumulation steps"}
+        default=4, metadata={"help": "the number of gradient accumulation steps"}
     )
     load_in_8bit: Optional[bool] = field(default=False, metadata={"help": "load the model in 8 bits precision"})
     load_in_4bit: Optional[bool] = field(default=True, metadata={"help": "load the model in 4 bits precision"})
@@ -136,8 +136,11 @@ def gpu_memory():
 def download_dataset(script_args) -> str:
     try:
         dataset_download_path = '/home/jovyan/custom_dataset/'
-        minio_service = MinioService(access_key=script_args.dataset_accesskey, secret_key=script_args.dataset_secretkey)
-        minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket, local_path=dataset_download_path, prefix=script_args.dataset_path)
+        minio_service = MinioService(access_key=script_args.dataset_accesskey,
+                                     secret_key=script_args.dataset_secretkey)
+        minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
+                                                   local_path=dataset_download_path,
+                                                   prefix=script_args.dataset_path)
         logger.info(f"Dataset downloaded to {dataset_download_path}{script_args.dataset_path}")
         return f"{dataset_download_path}{script_args.dataset_path}" if script_args.dataset_path else dataset_download_path
     except Exception as e:
@@ -177,6 +180,7 @@ def push_model(model_path: str, info: dict = {}):
 
 
 def main():
+
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
@@ -318,7 +322,7 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
     
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
-        prompt = sample["text"]
+        prompt = sample.get("text",script_args.dataset_text_field)
         result = tokenizer.__call__(
             prompt,
             truncation=True,
