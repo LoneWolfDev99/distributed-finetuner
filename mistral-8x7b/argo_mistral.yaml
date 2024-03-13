@@ -21,17 +21,17 @@ spec:
     - name: hf_api_token
       value: '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'
     - name: e2e_tir_access_token
-      value: 'eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJGSjg2R2NGM2pUYk5MT2NvNE52WmtVQ0lVbWZZQ3FvcXRPUWVNZmJoTmxFIn0.eyJleHAiOjE3Mzg5OTA4ODcsImlhdCI6MTcwNzQ1NDg4NywianRpIjoiMjJkZDk1ZTEtOTMzMy00MDQ2LTliMTktNjAxY2ZmZmFmYjIxIiwiaXNzIjoiaHR0cDovL2dhdGV3YXkuZTJlbmV0d29ya3MuY29tL2F1dGgvcmVhbG1zL2FwaW1hbiIsImF1ZCI6ImFjY291bnQiLCJzdWIiOiJhY2YzN2ZhOS1jZmIwLTQyNzktYjcwZi03Mjc0MDU0ZjQxZmQiLCJ0eXAiOiJCZWFyZXIiLCJhenAiOiJhcGltYW51aSIsInNlc3Npb25fc3RhdGUiOiI2YjQ4YjU4OS00YjU3LTRkZWMtYTU2My1lMDg4ZTU2NzYyYWMiLCJhY3IiOiIxIiwiYWxsb3dlZC1vcmlnaW5zIjpbIiJdLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJ1bWFfYXV0aG9yaXphdGlvbiIsImFwaXVzZXIiLCJkZWZhdWx0LXJvbGVzLWFwaW1hbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsInNpZCI6IjZiNDhiNTg5LTRiNTctNGRlYy1hNTYzLWUwODhlNTY3NjJhYyIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwibmFtZSI6IkRldmFuc2ggSmFpbiIsInByaW1hcnlfZW1haWwiOiJkZXZhbnNoLmphaW5AZTJlbmV0d29ya3MuY29tIiwiaXNfcHJpbWFyeV9jb250YWN0Ijp0cnVlLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJkZXZhbnNoLmphaW5AZTJlbmV0d29ya3MuY29tIiwiZ2l2ZW5fbmFtZSI6IkRldmFuc2giLCJmYW1pbHlfbmFtZSI6IkphaW4iLCJlbWFpbCI6ImRldmFuc2guamFpbkBlMmVuZXR3b3Jrcy5jb20ifQ.IJHRbrumvTq6q2D_HYLV2MNSKXuj1pG9Clfvb3yUK21kDm4K939qxyviAnxsaNGDf_uVBntirLVYB-ipr0q5u0FCB6JTsH9LXtchN-_KZY3lpa0jOugAiafqE_WSz7lzOntr-kpsBzOVSMvN_eNqIVjo-5oUgK7k3rgSh2IPCY0'
+      value: ''
     - name: e2e_tir_api_key
-      value: 'e23153c7-c992-49d4-bffe-3abeed3a94ab'
+      value: ''
     - name: e2e_tir_project_id
-      value: '2164'
+      value: ''
     - name: e2e_tir_team_id
-      value: '1845'
+      value: ''
     - name: e2e_tir_finetune_job_id
-      value: '234'
+      value: ''
     - name: e2e_tir_api_host
-      value: 'api.e2enetworks.com/myaccount/'
+      value: ''
     # run_name should be unique on a per-run basis, especially if reporting
     # to wandb or sharing PVCs between runs.
     - name: run_name
@@ -41,9 +41,9 @@ spec:
     - name: model
       value: 'mistralai/Mixtral-8x7B-v0.1'
     - name: dataset_name
-      value: 'gem/viggo'
+      value: 'vicgalle/alpaca-gpt4'
     - name: dataset_text_field
-      value: 'target'
+      value: 'text'
     - name: dataset_type
       value: 'huggingface' # can be tir-dataset, eos-bucket as well
     - name: dataset_bucket
@@ -63,7 +63,7 @@ spec:
     - name: seq_length
       value: 512
     - name: num_train_epochs
-      value: 1
+      value: 3
     - name: max_steps
       value: -1
     - name: save_steps
@@ -73,7 +73,7 @@ spec:
     - name: use_peft
       value: 'true'
     - name: peft_lora_r
-      value: 8
+      value: 64
     - name: peft_lora_alpha
       value: 16
     - name: trust_remote_code
@@ -90,13 +90,13 @@ spec:
     - name: ephemeral_storage
       value: 99
     - name: finetuner_image
-      value: 'devanshjain0707/mistral-8x7b-finetuner'
+      value: 'aimle2e/fine-tuner'
     - name: finetuner_tag
-      value: 'latest'
+      value: 'mistral_7b_v1'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
-      value: ''
+      value: 'a100'
     # WandB token.
     - name: wandb_key
       value: ''
@@ -260,12 +260,12 @@ spec:
       - emptyDir:
           medium: Memory
         name: dshm
-    # affinity:
-    #   nodeAffinity:
-    #     requiredDuringSchedulingIgnoredDuringExecution:
-    #       nodeSelectorTerms:
-    #         - matchExpressions:
-    #             - key: worker_type
-    #               operator: In
-    #               values:
-    #                 - "{{workflow.parameters.sku_type}}"
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: worker_type
+                  operator: In
+                  values:
+                    - "{{workflow.parameters.sku_type}}"

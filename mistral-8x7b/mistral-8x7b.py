@@ -25,11 +25,6 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfi
                           DataCollatorForLanguageModeling, HfArgumentParser, TrainingArguments)
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
 
-
-logger = logging.getLogger(__name__)
-
-tqdm.pandas()
-
 #Finetuning overview:
     # Parses script arguments.
     # Sets up logging.
@@ -44,7 +39,10 @@ tqdm.pandas()
     # Logs metrics.
     # Saves the trained model.
     # Pushes the model to a repository.
+    
+logger = logging.getLogger(__name__)
 
+tqdm.pandas()
 
 
 # Define and parse arguments.
@@ -55,9 +53,9 @@ class ScriptArguments:
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
-    model_name: Optional[str] = field(default="mistralai/Mixtral-8x7B-v0.1", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-chat-hf", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
-        default="gem/viggo", metadata={"help": "the dataset name"}
+        default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
     )
     dataset_type: Optional[str] = field(default="huggingface", metadata={"help": "the dataset source. Options: huggingface or eos-bucket"})
     dataset_bucket: Optional[str] = field(default="", metadata={"help": "the bucket when dataset type is eos bucket"})
@@ -73,18 +71,18 @@ class ScriptArguments:
     batch_size: Optional[int] = field(default=1, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
     gradient_accumulation_steps: Optional[int] = field(
-        default=4, metadata={"help": "the number of gradient accumulation steps"}
+        default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
     load_in_8bit: Optional[bool] = field(default=False, metadata={"help": "load the model in 8 bits precision"})
     load_in_4bit: Optional[bool] = field(default=True, metadata={"help": "load the model in 4 bits precision"})
     use_peft: Optional[bool] = field(default=True, metadata={"help": "Wether to use PEFT or not to train adapters"})
     trust_remote_code: Optional[bool] = field(default=False, metadata={"help": "Enable `trust_remote_code`"})
     output_dir: Optional[str] = field(default="output", metadata={"help": "the output directory"})
-    peft_lora_r: Optional[int] = field(default=8, metadata={"help": "the r parameter of the LoRA adapters"})
+    peft_lora_r: Optional[int] = field(default=64, metadata={"help": "the r parameter of the LoRA adapters"})
     peft_lora_alpha: Optional[int] = field(default=16, metadata={"help": "the alpha parameter of the LoRA adapters"})
     logging_steps: Optional[int] = field(default=500, metadata={"help": "the number of logging steps"})
     use_auth_token: Optional[bool] = field(default=True, metadata={"help": "Use HF auth token to access the model"})
-    num_train_epochs: Optional[int] = field(default=1, metadata={"help": "the number of training epochs"})
+    num_train_epochs: Optional[int] = field(default=3, metadata={"help": "the number of training epochs"})
     max_steps: Optional[int] = field(default=-1, metadata={"help": "the number of training steps"})
     save_steps: Optional[int] = field(
         default=300, metadata={"help": "Number of updates steps before two checkpoint saves"}
@@ -173,7 +171,7 @@ def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(f"mistral7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+    model_repo = model_repo_client.create(f"mistral-8x7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
@@ -297,6 +295,7 @@ def main():
                     break
         else:
             wandb.init(name=script_args.run_name, project=script_args.wandb_project)
+
         
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=script_args.load_in_4bit,
