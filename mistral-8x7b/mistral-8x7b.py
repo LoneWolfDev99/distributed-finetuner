@@ -188,7 +188,6 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
-
     logger.setLevel(logging.INFO)
     gpufree = gpu_memory()
     logger.info(f"starting the job. gpu memory free -  {gpufree}")
@@ -196,7 +195,7 @@ def main():
 
     # initiate tir
     tir.init()
-
+    
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
         dataset_path = download_dataset(script_args)
@@ -204,7 +203,6 @@ def main():
         dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
         train_dataset = load_dataset(dataset_type, data_files=[dataset_path], split="train")
-
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
         train_dataset = load_dataset(script_args.dataset_name, split="train")
@@ -216,7 +214,6 @@ def main():
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
             raise Exception("invalid prompt template")
-
         def prepare_prompt(example):
             if len(columns) > 0:
                 output_text = prompt_template
@@ -241,7 +238,6 @@ def main():
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-        #
         # train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     if eval_dataset and script_args.max_eval_samples > 0:
@@ -251,9 +247,7 @@ def main():
     # Discover if we have any checkpoints to resume from.
     if script_args.resume:
         try:
-
             output_dir_list = os.listdir(script_args.output_dir)
-
             checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
@@ -296,7 +290,6 @@ def main():
         else:
             wandb.init(name=script_args.run_name, project=script_args.wandb_project)
 
-        
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=script_args.load_in_4bit,
         bnb_4bit_use_double_quant=True,
