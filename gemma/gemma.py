@@ -24,13 +24,12 @@ from e2enetworks.cloud.tir.minio_service import MinioService
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                          HfArgumentParser, TrainingArguments)
+                          HfArgumentParser, Seq2SeqTrainingArguments, BitsAndBytesConfig)
 from trl import SFTTrainer, is_xpu_available
 
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
-
 
 # Define and parse arguments.
 @dataclass
@@ -39,7 +38,6 @@ class ScriptArguments:
     The name of the Casual LM model we wish to fine with SFTTrainer
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
-
     model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-chat-hf", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
         default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
@@ -158,14 +156,12 @@ def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(f"mistral7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+    model_repo = model_repo_client.create(f"gemma-7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
 
-
 def main():
-
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
@@ -191,7 +187,6 @@ def main():
         dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
         train_dataset = load_dataset(dataset_type, data_files=[dataset_path], split="train")
-
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
         train_dataset = load_dataset(script_args.dataset_name, split="train")
@@ -240,7 +235,6 @@ def main():
         try:
 
             output_dir_list = os.listdir(script_args.output_dir)
-
             checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
@@ -282,17 +276,31 @@ def main():
                     break
         else:
             wandb.init(name=script_args.run_name, project=script_args.wandb_project)
+    bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16
+    )
 
-    model = AutoModelForCausalLM.from_pretrained(
-        script_args.model_name,
-        trust_remote_code=script_args.trust_remote_code,
+    tokenizer = AutoTokenizer.from_pretrained(
+    script_args.model_name,
+    padding_side="left",
+    add_eos_token=True,
+    add_bos_token=True,
+    )
+    tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(script_args.model_name,
+        quantization_config=bnb_config, 
+        device_map="auto",
+        trust_remote_code = script_args.trust_remote_code,
         token=script_args.use_auth_token,
     )
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
-        prompt = sample["text"]
+        prompt = sample.get('text', 'dataset_text_field')
         result = tokenizer.__call__(
             prompt,
             truncation=True,
@@ -314,7 +322,7 @@ def main():
     tokenized_eval_dataset = eval_dataset.map(tokenize) if eval_dataset else eval_dataset
 
     # Step 3: Define the training arguments
-    training_args = TrainingArguments(
+    training_args = Seq2SeqTrainingArguments(
         output_dir=script_args.output_dir,
         per_device_train_batch_size=script_args.batch_size,
         gradient_accumulation_steps=script_args.gradient_accumulation_steps,
@@ -329,6 +337,8 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
+        optim="paged_adamw_8bit",
+        adam_epsilon=1.1e-8
         # TODO: uncomment that on the next release
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
@@ -345,7 +355,18 @@ def main():
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
             lora_alpha=script_args.peft_lora_alpha,
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+                "lm_head",
+            ],
             bias="none",
+            lora_dropout=0.05,
             task_type="CAUSAL_LM",
         )
     else:
