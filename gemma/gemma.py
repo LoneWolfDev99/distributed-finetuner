@@ -38,9 +38,9 @@ class ScriptArguments:
     The name of the Casual LM model we wish to fine with SFTTrainer
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
-    model_name: Optional[str] = field(default="google/gemma-7b", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-chat-hf", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
-        default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
+        default="vicgalle/alpaca-gpt4", metadata={"help": "the dataset name"}
     )
     dataset_type: Optional[str] = field(default="huggingface", metadata={"help": "the dataset source. Options: huggingface or eos-bucket"})
     dataset_bucket: Optional[str] = field(default="", metadata={"help": "the bucket when dataset type is eos bucket"})
@@ -330,7 +330,6 @@ def main():
         optim="paged_adamw_8bit",
         adam_epsilon=1.1e-8
         # TODO: uncomment that on the next release
-        # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
 
     logger.warning(
