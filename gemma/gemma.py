@@ -144,8 +144,6 @@ def retry_push_model(func_object):
 
 
 def get_dataset_format(path: str):
-
-    # function to return the file extension
     file_extension = pathlib.Path(path).suffix
     print(f"Dataset file {path} extension {file_extension}")
     return "json" if file_extension[1:] in ["json", "jsonl"] else file_extension[1:]
@@ -176,11 +174,8 @@ def main():
     gpufree = gpu_memory()
     logger.info(f"starting the job. gpu memory free -  {gpufree}")
     logger.info(f"Script parameters {script_args}")
-
-    # initiate tir
     tir.init()
 
-    # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
         dataset_path = download_dataset(script_args)
 
@@ -223,14 +218,11 @@ def main():
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-        #
-        # train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     if eval_dataset and script_args.max_eval_samples > 0:
         max_eval_samples = min(len(eval_dataset), script_args.max_eval_samples)
         eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    # Discover if we have any checkpoints to resume from.
     if script_args.resume:
         try:
 
@@ -259,7 +251,6 @@ def main():
     report_to = script_args.log_with
 
     if not report_to and script_args.wandb_key:
-        # todo: check if main process when distributed is implemented
         report_to = ["wandb"]
         if last_checkpoint is not None:
             wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
@@ -321,7 +312,6 @@ def main():
     tokenized_train_dataset = train_dataset.map(tokenize)
     tokenized_eval_dataset = eval_dataset.map(tokenize) if eval_dataset else eval_dataset
 
-    # Step 3: Define the training arguments
     training_args = Seq2SeqTrainingArguments(
         output_dir=script_args.output_dir,
         per_device_train_batch_size=script_args.batch_size,
@@ -343,14 +333,12 @@ def main():
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
 
-   # Log on each process the small summary:
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
 
-    # Step 4: Define the LoraConfig
     if script_args.use_peft:
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
@@ -375,11 +363,9 @@ def main():
     logger.info(f"initiating trainer. gpu memory free-  {gpu_memory()}")
     logger.info(f"device count: {torch.cuda.device_count()}")
     if torch.cuda.device_count() > 1:
-        # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         model.is_parallelizable = True
         model.model_parallel = True
 
-    # Step 5: Define the Trainer
     trainer = SFTTrainer(
         model=model,
         args=training_args,
@@ -390,14 +376,13 @@ def main():
         peft_config=peft_config,
         data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
     )
-    model.config.use_cache = False  # Silence the warnings. Re-enable for inference!
+    model.config.use_cache = False
 
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
     else:
         train_result = trainer.train()
 
-    # Step 6: Save the model
     final_path = os.path.join(script_args.output_dir, "final")
     trainer.save_model(final_path)
     metrics = train_result.metrics

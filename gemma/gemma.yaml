@@ -32,20 +32,16 @@ spec:
       value: ''
     - name: e2e_tir_api_host
       value: ''
-    # run_name should be unique on a per-run basis, especially if reporting
-    # to wandb or sharing PVCs between runs.
     - name: run_name
       value: 'gemma-7b'
-    # Training parameters. Model IDs are HuggingFace identifiers to pull down,
-    # or a path to your model relative to the PVC root.
     - name: model
       value: 'google/gemma-7b'
     - name: dataset_name
-      value: 'mlabonne/guanaco-llama2-1k'
+      value: 'vicgalle/alpaca-gpt4'
     - name: dataset_text_field
       value: 'text'
     - name: dataset_type
-      value: 'huggingface' # can be tir-dataset, eos-bucket as well
+      value: 'huggingface'
     - name: dataset_bucket
       value: ''
     - name: dataset_path
@@ -84,7 +80,6 @@ spec:
       value: 100
     - name: trainer_gpus
       value: 1
-    # Training number of CPU cores
     - name: trainer_cores
       value: 8
     - name: ephemeral_storage
@@ -97,13 +92,12 @@ spec:
       value: 'Always'
     - name: sku_type
       value: 'a100'
-    # WandB token.
     - name: wandb_key
       value: ''
     - name: wandb_project
       value: ''
     - name: learning_rate
-      value: 2e-5 # ~10x smaller than Mistral's learning rate
+      value: 2e-5
     - name: max_train_samples
       value: 10
     - name: max_eval_samples
@@ -128,7 +122,6 @@ spec:
         arguments:
           parameters:
           - name: finetuner_params
-            # Pass the params in as one string so we can template in the conditional flags
             value: >-
               --model_name={{workflow.parameters.model}}
               --dataset_name={{workflow.parameters.dataset_name}}
