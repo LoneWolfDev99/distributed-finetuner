@@ -25,21 +25,21 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfi
                           DataCollatorForLanguageModeling, HfArgumentParser, TrainingArguments)
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
 
-#Finetuning overview:
-    # Parses script arguments.
-    # Sets up logging.
-    # Initializes some variables and services.
-    # Loads the dataset.
-    # Tokenizes the dataset.
-    # Initializes the model and tokenizer.
-    # Defines training arguments.
-    # Initializes the Trainer.
-    # Trains the model.
-    # Evaluates the model.
-    # Logs metrics.
-    # Saves the trained model.
-    # Pushes the model to a repository.
-    
+# Finetuning overview:
+# Parses script arguments.
+# Sets up logging.
+# Initializes some variables and services.
+# Loads the dataset.
+# Tokenizes the dataset.
+# Initializes the model and tokenizer.
+# Defines training arguments.
+# Initializes the Trainer.
+# Trains the model.
+# Evaluates the model.
+# Logs metrics.
+# Saves the trained model.
+# Pushes the model to a repository.
+
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
@@ -296,20 +296,20 @@ def main():
         bnb_4bit_compute_dtype=torch.bfloat16
     )
 
-    #Step 3:Load the base model
+    # Step 3:Load the base model
     model = AutoModelForCausalLM.from_pretrained(
-        script_args.model_name, 
-        quantization_config=bnb_config, 
+        script_args.model_name,
+        quantization_config=bnb_config,
         trust_remote_code=script_args.trust_remote_code,
         token=script_args.use_auth_token,
-        device_map={'':torch.cuda.current_device()}
-        )
-    
+        device_map={'': torch.cuda.current_device()}
+    )
+
     tokenizer = AutoTokenizer.from_pretrained(
         script_args.model_name,
         padding_side="left",
         add_eos_token=True,
-        add_bos_token=True, 
+        add_bos_token=True,
     )
     tokenizer.pad_token = tokenizer.eos_token
     
@@ -354,7 +354,7 @@ def main():
     else:
         peft_config = None
 
-    #Step 5: Set up the accelerator
+    # Step 5: Set up the accelerator
     fsdp_plugin = FullyShardedDataParallelPlugin(
         state_dict_config=FullStateDictConfig(offload_to_cpu=True, rank0_only=False),
         optim_state_dict_config=FullOptimStateDictConfig(offload_to_cpu=True, rank0_only=False),
@@ -388,7 +388,7 @@ def main():
         # report_to="wandb",
     )
     
-    #Step 7: Define the Trainer
+    # Step 7: Define the Trainer
     trainer = transformers.Trainer(
         model=model,
         train_dataset=tokenized_train_dataset,
