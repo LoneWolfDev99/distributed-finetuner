@@ -291,7 +291,11 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
-        prompt = sample.get('text', 'dataset_text_field')
+        if script_args.dataset_text_field:
+            prompt = sample[script_args.dataset_text_field]
+        else:
+            prompt = sample['text']
+
         result = tokenizer.__call__(
             prompt,
             truncation=True,
