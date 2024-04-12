@@ -1,31 +1,44 @@
+import base64
 import logging
 import math
 import os
+import pathlib
 import random
+import re
+import subprocess as sp
 import sys
 import time
-import base64
+from datetime import datetime
+from dataclasses import dataclass, field
+from typing import Optional
+
 import wandb
 import torch
-
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional
-import re
-import pathlib
-import subprocess as sp
-import os
-
 import transformers
-import wandb
+from accelerate import Accelerator, FullyShardedDataParallelPlugin
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
-from peft import LoraConfig
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from tqdm import tqdm
-from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                          HfArgumentParser, TrainingArguments)
-from trl import SFTTrainer, is_xpu_available
+from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+                          DataCollatorForLanguageModeling, HfArgumentParser, TrainingArguments)
+from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
+
+# Finetuning overview:
+# Parses script arguments.
+# Sets up logging.
+# Initializes some variables and services.
+# Loads the dataset.
+# Tokenizes the dataset.
+# Initializes the model and tokenizer.
+# Defines training arguments.
+# Initializes the Trainer.
+# Trains the model.
+# Evaluates the model.
+# Logs metrics.
+# Saves the trained model.
+# Pushes the model to a repository.
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +68,13 @@ class ScriptArguments:
     dataset_text_field: Optional[str] = field(default="text", metadata={"help": "the text field of the dataset"})
     log_with: Optional[str] = field(default="none", metadata={"help": "use 'wandb' to log with wandb"})
     learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
-    batch_size: Optional[int] = field(default=64, metadata={"help": "the batch size"})
+    batch_size: Optional[int] = field(default=1, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
     gradient_accumulation_steps: Optional[int] = field(
-        default=16, metadata={"help": "the number of gradient accumulation steps"}
+        default=1, metadata={"help": "the number of gradient accumulation steps"}
     )
     load_in_8bit: Optional[bool] = field(default=False, metadata={"help": "load the model in 8 bits precision"})
-    load_in_4bit: Optional[bool] = field(default=False, metadata={"help": "load the model in 4 bits precision"})
+    load_in_4bit: Optional[bool] = field(default=True, metadata={"help": "load the model in 4 bits precision"})
     use_peft: Optional[bool] = field(default=True, metadata={"help": "Wether to use PEFT or not to train adapters"})
     trust_remote_code: Optional[bool] = field(default=False, metadata={"help": "Enable `trust_remote_code`"})
     output_dir: Optional[str] = field(default="output", metadata={"help": "the output directory"})
@@ -158,7 +171,7 @@ def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(f"mistral7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+    model_repo = model_repo_client.create(f"mistral-8x7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
@@ -175,7 +188,6 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
-
     logger.setLevel(logging.INFO)
     gpufree = gpu_memory()
     logger.info(f"starting the job. gpu memory free -  {gpufree}")
@@ -183,7 +195,7 @@ def main():
 
     # initiate tir
     tir.init()
-
+    
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
         dataset_path = download_dataset(script_args)
@@ -191,7 +203,6 @@ def main():
         dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
         train_dataset = load_dataset(dataset_type, data_files=[dataset_path], split="train")
-
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
         train_dataset = load_dataset(script_args.dataset_name, split="train")
@@ -203,7 +214,6 @@ def main():
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
             raise Exception("invalid prompt template")
-
         def prepare_prompt(example):
             if len(columns) > 0:
                 output_text = prompt_template
@@ -228,7 +238,6 @@ def main():
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-        #
         # train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     if eval_dataset and script_args.max_eval_samples > 0:
@@ -238,9 +247,7 @@ def main():
     # Discover if we have any checkpoints to resume from.
     if script_args.resume:
         try:
-
             output_dir_list = os.listdir(script_args.output_dir)
-
             checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
@@ -283,14 +290,29 @@ def main():
         else:
             wandb.init(name=script_args.run_name, project=script_args.wandb_project)
 
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=script_args.load_in_4bit,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.bfloat16
+    )
+
+    # Step 3:Load the base model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
+        quantization_config=bnb_config,
         trust_remote_code=script_args.trust_remote_code,
         token=script_args.use_auth_token,
+        device_map={'': torch.cuda.current_device()}
     )
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name)
-    tokenizer.pad_token = tokenizer.eos_token
 
+    tokenizer = AutoTokenizer.from_pretrained(
+        script_args.model_name,
+        padding_side="left",
+        add_eos_token=True,
+        add_bos_token=True,
+    )
+    tokenizer.pad_token = tokenizer.eos_token
+    
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
         if script_args.dataset_text_field:
             prompt = sample[script_args.dataset_text_field]
@@ -315,9 +337,39 @@ def main():
 
     tokenized_train_dataset = train_dataset.map(tokenize)
     tokenized_eval_dataset = eval_dataset.map(tokenize) if eval_dataset else eval_dataset
+    
+    model.gradient_checkpointing_enable()
+    model = prepare_model_for_kbit_training(model)
+    
+    # Step 4: Define the LoraConfig
+    if script_args.use_peft:
+        peft_config = LoraConfig(
+            r=8,
+            lora_alpha=16,
+            target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj","lm_head",],
+            bias="none",
+            lora_dropout=0.05,  # Conventional
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, peft_config)
+    else:
+        peft_config = None
 
-    # Step 3: Define the training arguments
-    training_args = TrainingArguments(
+    # Step 5: Set up the accelerator
+    fsdp_plugin = FullyShardedDataParallelPlugin(
+        state_dict_config=FullStateDictConfig(offload_to_cpu=True, rank0_only=False),
+        optim_state_dict_config=FullOptimStateDictConfig(offload_to_cpu=True, rank0_only=False),
+    )
+    accelerator = Accelerator(fsdp_plugin=fsdp_plugin)
+    
+    model = accelerator.prepare_model(model)
+    
+    if torch.cuda.device_count() > 1: # If more than 1 GPU
+        model.is_parallelizable = True
+        model.model_parallel = True
+    
+    # Step 6: Define the training arguments
+    training_args = transformers.TrainingArguments(
         output_dir=script_args.output_dir,
         per_device_train_batch_size=script_args.batch_size,
         gradient_accumulation_steps=script_args.gradient_accumulation_steps,
@@ -332,54 +384,28 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
-        # TODO: uncomment that on the next release
-        # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
+        fp16=True, 
+        optim="paged_adamw_8bit",
+        # report_to="wandb",
     )
-
-   # Log on each process the small summary:
-    logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
-    )
-    logger.info(f"Training/evaluation parameters {training_args}")
-
-    # Step 4: Define the LoraConfig
-    if script_args.use_peft:
-        peft_config = LoraConfig(
-            r=script_args.peft_lora_r,
-            lora_alpha=script_args.peft_lora_alpha,
-            bias="none",
-            task_type="CAUSAL_LM",
-        )
-    else:
-        peft_config = None
-
-    logger.info(f"initiating trainer. gpu memory free-  {gpu_memory()}")
-    logger.info(f"device count: {torch.cuda.device_count()}")
-    if torch.cuda.device_count() > 1:
-        # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
-        model.is_parallelizable = True
-        model.model_parallel = True
-
-    # Step 5: Define the Trainer
-    trainer = SFTTrainer(
+    
+    # Step 7: Define the Trainer
+    trainer = transformers.Trainer(
         model=model,
-        args=training_args,
-        max_seq_length=script_args.seq_length,
         train_dataset=tokenized_train_dataset,
-        dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'text',
         eval_dataset=tokenized_eval_dataset,
-        peft_config=peft_config,
-        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
+        args=training_args,
+        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
     )
-    model.config.use_cache = False  # Silence the warnings. Re-enable for inference!
 
+    model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
+    
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
     else:
         train_result = trainer.train()
 
-    # Step 6: Save the model
+    # Step 8: Save the model
     final_path = os.path.join(script_args.output_dir, "final")
     trainer.save_model(final_path)
     metrics = train_result.metrics

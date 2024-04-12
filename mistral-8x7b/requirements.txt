@@ -1,0 +1,13 @@
+bitsandbytes
+transformers
+datasets
+trl
+peft
+tqdm
+wandb
+tokenizers
+accelerate
+scipy
+ipywidgets
+matplotlib
+e2enetworks 
