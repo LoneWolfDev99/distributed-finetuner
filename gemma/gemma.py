@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 tqdm.pandas()
 
+
 # Define and parse arguments.
 @dataclass
 class ScriptArguments:
