@@ -39,7 +39,7 @@ class ScriptArguments:
     The name of the Casual LM model we wish to fine with SFTTrainer
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
-    model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-chat-hf", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="google/gemma-7b", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
         default="vicgalle/alpaca-gpt4", metadata={"help": "the dataset name"}
     )
@@ -84,10 +84,14 @@ class ScriptArguments:
             "help": "key word arguments to be passed along `torch.utils.checkpoint.checkpoint` method - e.g. `use_reentrant=False`"
         },
     )
-    run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
-    auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
-    wandb_key: Optional[str] = field(default=None, metadata={"help": "wandb key"})
-    wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
+    run_name: Optional[str] = field(
+        default=None, metadata={"help": "run name for wandb"})
+    auto_find_batch_size: Optional[str] = field(default=False, metadata={
+                                                "help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
+    wandb_key: Optional[str] = field(
+        default=None, metadata={"help": "wandb key"})
+    wandb_project: Optional[str] = field(
+        default=None, metadata={"help": "wandb project"})
     max_train_samples: Optional[int] = field(
         default=-1,
         metadata={
@@ -106,14 +110,18 @@ class ScriptArguments:
             )
         },
     )
-    prompt_template_base64: Optional[str] = field(default=None, metadata={"help": "prompt template in base64"})
-    resume: Optional[str] = field(default=True, metadata={"help": "resume from last checkpoint"})
+    prompt_template_base64: Optional[str] = field(
+        default=None, metadata={"help": "prompt template in base64"})
+    resume: Optional[str] = field(default=True, metadata={
+                                  "help": "resume from last checkpoint"})
 
 
 def gpu_memory():
     command = "nvidia-smi --query-gpu=memory.free --format=csv"
-    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
-    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
+    memory_free_info = sp.check_output(
+        command.split()).decode('ascii').split('\n')[:-1][1:]
+    memory_free_values = [int(x.split()[0])
+                          for i, x in enumerate(memory_free_info)]
     return memory_free_values
 
 
@@ -159,6 +167,7 @@ def push_model(model_path: str, info: dict = {}):
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
+
 
 def main():
     parser = HfArgumentParser(ScriptArguments)
@@ -269,26 +278,26 @@ def main():
         else:
             wandb.init(name=script_args.run_name, project=script_args.wandb_project)
     bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16
     )
 
     tokenizer = AutoTokenizer.from_pretrained(
-    script_args.model_name,
-    padding_side="left",
-    add_eos_token=True,
-    add_bos_token=True,
+        script_args.model_name,
+        padding_side="left",
+        add_eos_token=True,
+        add_bos_token=True,
     )
     tokenizer.pad_token = tokenizer.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(script_args.model_name,
-        quantization_config=bnb_config, 
-        device_map="auto",
-        trust_remote_code = script_args.trust_remote_code,
-        token=script_args.use_auth_token,
-    )
+                                                 quantization_config=bnb_config,
+                                                 device_map="auto",
+                                                 trust_remote_code=script_args.trust_remote_code,
+                                                 token=script_args.use_auth_token,
+                                                 )
     tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
