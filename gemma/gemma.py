@@ -229,7 +229,6 @@ def main():
 
     if script_args.resume:
         try:
-
             output_dir_list = os.listdir(script_args.output_dir)
             checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
@@ -271,6 +270,7 @@ def main():
                     break
         else:
             wandb.init(name=script_args.run_name, project=script_args.wandb_project)
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
