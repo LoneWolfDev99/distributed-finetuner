@@ -84,10 +84,8 @@ class ScriptArguments:
             "help": "key word arguments to be passed along `torch.utils.checkpoint.checkpoint` method - e.g. `use_reentrant=False`"
         },
     )
-    run_name: Optional[str] = field(
-        default=None, metadata={"help": "run name for wandb"})
-    auto_find_batch_size: Optional[str] = field(default=False, metadata={
-                                                "help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
+    run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
+    auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
     wandb_key: Optional[str] = field(
         default=None, metadata={"help": "wandb key"})
     wandb_project: Optional[str] = field(
@@ -110,18 +108,14 @@ class ScriptArguments:
             )
         },
     )
-    prompt_template_base64: Optional[str] = field(
-        default=None, metadata={"help": "prompt template in base64"})
-    resume: Optional[str] = field(default=True, metadata={
-                                  "help": "resume from last checkpoint"})
+    prompt_template_base64: Optional[str] = field(default=None, metadata={"help": "prompt template in base64"})
+    resume: Optional[str] = field(default=True, metadata={"help": "resume from last checkpoint"})
 
 
 def gpu_memory():
     command = "nvidia-smi --query-gpu=memory.free --format=csv"
-    memory_free_info = sp.check_output(
-        command.split()).decode('ascii').split('\n')[:-1][1:]
-    memory_free_values = [int(x.split()[0])
-                          for i, x in enumerate(memory_free_info)]
+    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
+    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
     return memory_free_values
 
 
