@@ -1,0 +1,11 @@
+transformers
+datasets
+trl
+peft
+tqdm
+wandb
+bitsandbytes
+tokenizers
+accelerate
+e2enetworks 
+
