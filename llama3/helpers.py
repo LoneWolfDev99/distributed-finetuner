@@ -84,13 +84,13 @@ def get_allowed_files(dataset_folder)-> str:
 
 def retry_decorator(func_object):
     def wrapper(*args, **kwargs):
-        for i in range(3):
+        for retry_count in range(3):
             try:
                 func_object(*args, **kwargs)
                 break
             except Exception as e:
                 logger.error(f"OOPS_AN_ERROR_OCCURRED | {e}")
-                if i == 2:
+                if retry_count == 2:
                     raise e
                 time.sleep(10)
                 continue
@@ -151,8 +151,8 @@ def csv_loader(file_path):
 def parquet_loader(file_path):
     ''' yield id, value'''
     parquet_file = parquet.ParquetFile(file_path)
-    for i in range(parquet_file.num_row_groups):
-        row_group = parquet_file.read_row_group(i)
+    for rows in range(parquet_file.num_row_groups):
+        row_group = parquet_file.read_row_group(rows)
         row_group = row_group.to_pandas()
         for row in row_group.iterrows():
             yield row
