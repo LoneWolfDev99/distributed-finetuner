@@ -22,7 +22,7 @@ spec:
     - name: pvc_class
       value: 'csi-rbd-sc'
     - name: hf_api_token
-      value: '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'
+      value: ''
     - name: e2e_tir_access_token
       value: ''
     - name: e2e_tir_api_key
