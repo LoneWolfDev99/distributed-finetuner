@@ -19,7 +19,7 @@ spec:
     - name: workspace_pvc_class
       value: 'csi-rbd-sc'
     - name: hf_api_token
-      value: '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'
+      value: ''
     - name: e2e_tir_access_token
       value: ''
     - name: e2e_tir_api_key
@@ -32,10 +32,6 @@ spec:
       value: ''
     - name: e2e_tir_api_host
       value: ''
-    # run_name should be unique on a per-run basis, especially if reporting
-    # to wandb or sharing PVCs between runs.
-    - name: run_name
-      value: 'mistral-7b'
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
     # or a path to your model relative to the PVC root.
     - name: model
@@ -65,7 +61,7 @@ spec:
     - name: num_train_epochs
       value: 3
     - name: max_steps
-      value: -1
+      value: 1
     - name: save_steps
       value: 100
     - name: save_total_limit
@@ -90,17 +86,19 @@ spec:
     - name: ephemeral_storage
       value: 99
     - name: finetuner_image
-      value: 'aimle2e/fine-tuner'
+      value: 'devanshjain0707/mistral-finetuner'
     - name: finetuner_tag
-      value: 'mistral_7b_v1'
+      value: 'latest'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
-      value: 'a100'
-    # WandB token.
+      value: ''
+    # WandB integration parameters
     - name: wandb_key
       value: ''
     - name: wandb_project
+      value: ''
+    - name: run_name
       value: ''
     - name: learning_rate
       value: 2e-5 # ~10x smaller than Mistral's learning rate
@@ -153,6 +151,8 @@ spec:
               --max_eval_samples={{workflow.parameters.max_eval_samples}}
               --prompt_template_base64={{workflow.parameters.prompt_template_base64}}
               --resume={{workflow.parameters.resume}}
+              --wandb_project={{workflow.parameters.wandb_project}}
+              --run_name={{workflow.parameters.run_name}}
           - name: wandb_key
             value: "{{workflow.parameters.wandb_key}}"
           - name: trainer_ram
@@ -165,6 +165,8 @@ spec:
             value: "{{workflow.parameters.torch_cache}}"
           - name: transformers_cache
             value: "{{workflow.parameters.transformers_cache}}"
+          - name: hf_api_token
+            value: "{{workflow.parameters.hf_api_token}}"
           - name: e2e_tir_access_token
             value: "{{workflow.parameters.e2e_tir_access_token}}"
           - name:  e2e_tir_api_key
@@ -183,6 +185,7 @@ spec:
         - name: finetuner_params
         - name: wandb_key
         - name: torch_cache
+        - name: hf_api_token
         - name: trainer_ram
         - name: trainer_cores
         - name: trainer_gpus
@@ -223,9 +226,9 @@ spec:
       - name: TORCH_EXTENSIONS_DIR
         value: "{{inputs.parameters.torch_cache}}"
       - name: HF_API_TOKEN
-        value: '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'
+        value: "{{inputs.parameters.hf_api_token}}"
       - name: HF_TOKEN
-        value: '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'
+        value: "{{inputs.parameters.hf_api_token}}"
       - name: HF_HOME
         value: "{{inputs.parameters.transformers_cache}}"   
       - name: E2E_TIR_ACCESS_TOKEN
@@ -260,12 +263,12 @@ spec:
       - emptyDir:
           medium: Memory
         name: dshm
-    affinity:
-      nodeAffinity:
-        requiredDuringSchedulingIgnoredDuringExecution:
-          nodeSelectorTerms:
-            - matchExpressions:
-                - key: worker_type
-                  operator: In
-                  values:
-                    - "{{workflow.parameters.sku_type}}"
+    # affinity:
+    #   nodeAffinity:
+    #     requiredDuringSchedulingIgnoredDuringExecution:
+    #       nodeSelectorTerms:
+    #         - matchExpressions:
+    #             - key: worker_type
+    #               operator: In
+    #               values:
+    #                 - "{{workflow.parameters.sku_type}}"
