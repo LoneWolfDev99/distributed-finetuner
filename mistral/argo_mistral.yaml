@@ -157,7 +157,7 @@ spec:
               --prompt_template_base64={{workflow.parameters.prompt_template_base64}}
               --resume={{workflow.parameters.resume}}
               --wandb_project={{workflow.parameters.wandb_project}}
-              --run_name={{workflow.parameters.run_name}}
+              --wandb_run_name={{workflow.parameters.wandb_run_name}}
           - name: wandb_key
             value: "{{workflow.parameters.wandb_key}}"
           - name: trainer_ram
