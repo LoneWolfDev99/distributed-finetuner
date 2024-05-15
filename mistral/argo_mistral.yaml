@@ -61,7 +61,7 @@ spec:
     - name: num_train_epochs
       value: 3
     - name: max_steps
-      value: 1
+      value: -1
     - name: save_steps
       value: 100
     - name: save_total_limit
@@ -263,12 +263,12 @@ spec:
       - emptyDir:
           medium: Memory
         name: dshm
-    # affinity:
-    #   nodeAffinity:
-    #     requiredDuringSchedulingIgnoredDuringExecution:
-    #       nodeSelectorTerms:
-    #         - matchExpressions:
-    #             - key: worker_type
-    #               operator: In
-    #               values:
-    #                 - "{{workflow.parameters.sku_type}}"
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: worker_type
+                  operator: In
+                  values:
+                    - "{{workflow.parameters.sku_type}}"

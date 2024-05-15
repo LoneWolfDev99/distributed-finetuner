@@ -54,8 +54,8 @@ class ScriptArguments:
     dataset_split: Optional[float] = field(default=0, metadata={"help": "training split ratio"})
     dataset_text_field: Optional[str] = field(default="text", metadata={"help": "the text field of the dataset"})
     log_with: Optional[str] = field(default="none", metadata={"help": "use 'wandb' to log with wandb"})
-    learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
-    batch_size: Optional[int] = field(default=64, metadata={"help": "the batch size"})
+    learning_rate: Optional[float] = field(default=2.5e-5, metadata={"help": "the learning rate"})
+    batch_size: Optional[int] = field(default=8, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
     gradient_accumulation_steps: Optional[int] = field(
         default=16, metadata={"help": "the number of gradient accumulation steps"}
@@ -85,10 +85,9 @@ class ScriptArguments:
             "help": "key word arguments to be passed along `torch.utils.checkpoint.checkpoint` method - e.g. `use_reentrant=False`"
         },
     )
-    run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
     auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
-    wandb_key: Optional[str] = field(default=None, metadata={"help": "wandb key"})
     wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
+    run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
     max_train_samples: Optional[int] = field(
         default=-1,
         metadata={
@@ -162,6 +161,41 @@ def push_model(model_path: str, info: dict = {}):
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
+
+def initialize_wandb(script_args, last_checkpoint=None):
+    if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
+        script_args.log_with = 'wandb'
+        if last_checkpoint is not None:
+            try:
+                wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
+                for run in wandb_api.runs(path=script_args.wandb_project):
+                    logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
+                    if run.state in ["crashed", "failed"] and run.name == script_args.run_name:
+                        logger.info(f"CHECKPOINT: Resuming {run.id}")
+                        try:
+                            run = wandb.init(
+                                id=run.id,
+                                project=script_args.wandb_project,
+                                resume="must",
+                                name=run.name,
+                            )
+                            break  
+                        except Exception as e:
+                            logger.warning(f"WANDB: Failed to resume run {run.id}: {str(e)}")
+                            return  
+            except Exception as e:
+                logger.warning(f"WANDB: Failed to retrieve runs from Wandb API: {e}")
+                return  
+        else:
+            try:
+                run = wandb.init(name=script_args.run_name, project=script_args.wandb_project)
+                logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
+            except Exception as e:
+                logger.warning(f"WANDB: Failed to create run: {str(e)}")
+                return 
+    else:
+        script_args.log_with = None
+        logger.warning("WANDB: WANDB_API_KEY not found or wandb_project not provided, disabling wandb.")
 
 
 def main():
@@ -238,9 +272,7 @@ def main():
     # Discover if we have any checkpoints to resume from.
     if script_args.resume:
         try:
-
             output_dir_list = os.listdir(script_args.output_dir)
-
             checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
@@ -257,31 +289,9 @@ def main():
         last_checkpoint = None
 
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
-
-    if not script_args.wandb_key:
-        logger.warning("WANDB_API_KEY: WANDB_API_KEY not found, disabling wandb.")
-        os.environ["WANDB_DISABLED"] = "True"
-
-    report_to = script_args.log_with
-
-    if not report_to and script_args.wandb_key:
-        # todo: check if main process when distributed is implemented
-        report_to = ["wandb"]
-        if last_checkpoint is not None:
-            wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
-            for run in wandb_api.runs(path=script_args.wandb_project):
-                logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
-                if run.state in ["crashed", "failed"] and run.name == script_args.run_name:
-                    logger.info(f"CHECKPOINT: Resuming {run.id}")
-                    run = wandb.init(
-                        id=run.id,
-                        project=script_args.wandb_project,
-                        resume="must",
-                        name=run.name,
-                    )
-                    break
-        else:
-            wandb.init(name=script_args.run_name, project=script_args.wandb_project)
+    
+    # Weights & Biases integration
+    initialize_wandb(script_args, last_checkpoint)
 
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
@@ -327,10 +337,10 @@ def main():
         num_train_epochs=script_args.num_train_epochs,
         max_steps=script_args.max_steps,
         report_to=script_args.log_with,
+        run_name=script_args.run_name,
         save_steps=script_args.save_steps,
         save_total_limit=script_args.save_total_limit,
         gradient_checkpointing=script_args.gradient_checkpointing,
-        run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
         # TODO: uncomment that on the next release
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
@@ -349,6 +359,7 @@ def main():
             r=script_args.peft_lora_r,
             lora_alpha=script_args.peft_lora_alpha,
             bias="none",
+            lora_dropout=0.05, #TODO: This should be available in the UI.
             task_type="CAUSAL_LM",
         )
     else:
