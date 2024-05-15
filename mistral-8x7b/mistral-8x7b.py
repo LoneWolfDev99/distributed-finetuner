@@ -291,7 +291,7 @@ def main():
             wandb.init(name=script_args.run_name, project=script_args.wandb_project)
 
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=script_args.load_in_4bit,
+        load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_compute_dtype=torch.bfloat16
     )
@@ -344,11 +344,20 @@ def main():
     # Step 4: Define the LoraConfig
     if script_args.use_peft:
         peft_config = LoraConfig(
-            r=8,
-            lora_alpha=16,
-            target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj","lm_head",],
+            r=script_args.peft_lora_r,
+            lora_alpha=script_args.peft_lora_alpha,
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+                "lm_head",
+            ],
             bias="none",
-            lora_dropout=0.05,  # Conventional
+            lora_dropout=0.05,
             task_type="CAUSAL_LM",
         )
         model = get_peft_model(model, peft_config)

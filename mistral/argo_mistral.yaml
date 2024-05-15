@@ -32,6 +32,10 @@ spec:
       value: ''
     - name: e2e_tir_api_host
       value: ''
+    # run_name should be unique on a per-run basis, especially if reporting
+    # to wandb or sharing PVCs between runs.
+    - name: run_name
+      value: 'mistral-8x7b'
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
     # or a path to your model relative to the PVC root.
     - name: model
@@ -98,7 +102,7 @@ spec:
       value: ''
     - name: wandb_project
       value: ''
-    - name: run_name
+    - name: wandb_run_name
       value: ''
     - name: learning_rate
       value: 2e-5 # ~10x smaller than Mistral's learning rate
@@ -140,6 +144,7 @@ spec:
               --output_dir={{workflow.parameters.output_dir}}
               --num_train_epochs={{workflow.parameters.num_train_epochs}}
               --batch_size={{workflow.parameters.batch_size}}
+              --seq_length={{workflow.parameters.seq_length}}
               --gradient_accumulation_steps={{workflow.parameters.gradient_accumulation_steps}}
               --use_peft={{workflow.parameters.use_peft}}
               --peft_lora_r={{workflow.parameters.peft_lora_r}}
