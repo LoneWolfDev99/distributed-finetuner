@@ -35,7 +35,7 @@ spec:
     # run_name should be unique on a per-run basis, especially if reporting
     # to wandb or sharing PVCs between runs.
     - name: run_name
-      value: 'mistral-8x7b'
+      value: ''
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
     # or a path to your model relative to the PVC root.
     - name: model
@@ -90,9 +90,9 @@ spec:
     - name: ephemeral_storage
       value: 99
     - name: finetuner_image
-      value: 'devanshjain0707/mistral-finetuner'
+      value: 'aimle2e/fine-tuner'
     - name: finetuner_tag
-      value: 'latest'
+      value: 'mistral_7b_v1'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
@@ -144,7 +144,6 @@ spec:
               --output_dir={{workflow.parameters.output_dir}}
               --num_train_epochs={{workflow.parameters.num_train_epochs}}
               --batch_size={{workflow.parameters.batch_size}}
-              --seq_length={{workflow.parameters.seq_length}}
               --gradient_accumulation_steps={{workflow.parameters.gradient_accumulation_steps}}
               --use_peft={{workflow.parameters.use_peft}}
               --peft_lora_r={{workflow.parameters.peft_lora_r}}
@@ -158,6 +157,7 @@ spec:
               --resume={{workflow.parameters.resume}}
               --wandb_project={{workflow.parameters.wandb_project}}
               --wandb_run_name={{workflow.parameters.wandb_run_name}}
+              --seq_length={{workflow.parameters.seq_length}}
           - name: wandb_key
             value: "{{workflow.parameters.wandb_key}}"
           - name: trainer_ram

@@ -82,9 +82,10 @@ class ScriptArguments:
             "help": "key word arguments to be passed along `torch.utils.checkpoint.checkpoint` method - e.g. `use_reentrant=False`"
         },
     )
+    run_name: Optional[str] = field(default=None, metadata={"help": "TIR finetuning job name"})
     auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
     wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
-    wandb_run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
+    wandb_run_name: Optional[str] = field(default=None, metadata={"help": "Run name for wandb project"})
     max_train_samples: Optional[int] = field(
         default=-1,
         metadata={
@@ -199,7 +200,7 @@ def initialize_wandb(script_args, last_checkpoint=None):
                 return 
     else:
         script_args.log_with = None
-        logger.warning("WANDB: WANDB_API_KEY not found or wandb_project not provided, disabling wandb.")
+        logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
 
 def main():
