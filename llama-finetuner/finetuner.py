@@ -14,7 +14,7 @@ from e2enetworks.cloud import tir
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
-                          HfArgumentParser, TrainingArguments)
+                          HfArgumentParser, TrainingArguments, AutoTokenizer)
 from trl import SFTTrainer, is_xpu_available
 
 from helpers import (decode_base64, download_dataset, get_dataset_format,
