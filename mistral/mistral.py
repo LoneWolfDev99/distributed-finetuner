@@ -145,7 +145,6 @@ def retry_push_model(func_object):
 
 
 def get_dataset_format(path: str):
-
     # function to return the file extension
     file_extension = pathlib.Path(path).suffix
     print(f"Dataset file {path} extension {file_extension}")
@@ -164,7 +163,7 @@ def push_model(model_path: str, info: dict = {}):
         model_id=model_id)
     return True
 
-    
+
 def initialize_wandb(script_args, last_checkpoint=None):
     try:
         if last_checkpoint is not None:
@@ -279,7 +278,7 @@ def main():
             else:
                 logger.info("no checkpoint not found. training will start from step 0")
         except FileNotFoundError:
-            logger.info(f"failed to find last_checkpoint: output directory does not exist")
+            logger.info("failed to find last_checkpoint: output directory does not exist")
             last_checkpoint = None
         except Exception as e:
             logger.info(f"failed to find last_checkpoint: {str(e)}")
@@ -297,7 +296,7 @@ def main():
     else:
         script_args.log_with = None
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
-        
+
     # Load base model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
