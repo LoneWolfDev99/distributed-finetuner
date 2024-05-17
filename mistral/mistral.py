@@ -173,10 +173,10 @@ def initialize_wandb(script_args, last_checkpoint=None):
             run = wandb.init(
                 name=script_args.wandb_run_name, 
                 project=script_args.wandb_project)
-        if run:
-            logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
     except Exception as e:
         logger.warning(f"WANDB: Failed to create run: {e}")
+        return
+    logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
 
 
 def resume_previous_run(script_args):
@@ -296,7 +296,6 @@ def main():
         initialize_wandb(script_args, last_checkpoint)
     else:
         script_args.log_with = None
-        logger.info(f"WANDB_API_KEY: {os.environ.get('WANDB_API_KEY')}, WANDB_PROJECT: {script_args.wandb_project}")
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
         
     # Load base model
