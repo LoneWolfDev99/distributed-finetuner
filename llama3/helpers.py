@@ -7,6 +7,7 @@ import pathlib
 import subprocess as sp
 import sys
 import time
+import wandb
 from datetime import datetime
 
 import pandas as pd
@@ -163,3 +164,31 @@ def arrow_loader(file_path):
     arrow_file_contents = pd.read_feather(file_path)
     for row in arrow_file_contents.iterrows():
         yield row
+        
+def initialize_wandb(script_args, last_checkpoint=None):
+    try:
+        if last_checkpoint is not None:
+            run = resume_previous_run(script_args)
+        else:
+            run = wandb.init(
+                name=script_args.wandb_run_name, 
+                project=script_args.wandb_project)
+    except Exception as e:
+        logger.warning(f"WANDB: Failed to create run: {e}")
+        return
+    logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
+
+
+def resume_previous_run(script_args):
+    wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
+    for run in wandb_api.runs(path=script_args.wandb_project):
+        logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
+        if run.state in ["crashed", "failed"] and run.name == script_args.wandb_run_name:
+            logger.info(f"CHECKPOINT: Resuming {run.id}")
+            return wandb.init(
+                id=run.id,
+                project=script_args.wandb_project,
+                resume="must",
+                name=run.name,
+            )
+    return None
