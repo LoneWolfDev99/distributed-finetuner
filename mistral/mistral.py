@@ -164,43 +164,34 @@ def push_model(model_path: str, info: dict = {}):
         model_id=model_id)
     return True
 
-
+    
 def initialize_wandb(script_args, last_checkpoint=None):
-    if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
-        script_args.log_with = 'wandb'
+    try:
         if last_checkpoint is not None:
-            try:
-                wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
-                for run in wandb_api.runs(path=script_args.wandb_project):
-                    logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
-                    if run.state in ["crashed", "failed"] and run.name == script_args.wandb_run_name:
-                        logger.info(f"CHECKPOINT: Resuming {run.id}")
-                        try:
-                            run = wandb.init(
-                                id=run.id,
-                                project=script_args.wandb_project,
-                                resume="must",
-                                name=run.name,
-                            )
-                            break  
-                        except Exception as e:
-                            logger.warning(f"WANDB: Failed to resume run {run.id}: {str(e)}")
-                            return  
-            except Exception as e:
-                logger.warning(f"WANDB: Failed to retrieve runs from Wandb API: {e}")
-                return  
+            run = resume_previous_run(script_args)
         else:
-            try:
-                run = wandb.init(
-                    name=script_args.wandb_run_name, 
-                    project=script_args.wandb_project)
-                logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
-            except Exception as e:
-                logger.warning(f"WANDB: Failed to create run: {str(e)}")
-                return 
-    else:
-        script_args.log_with = None
-        logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
+            run = wandb.init(
+                name=script_args.wandb_run_name, 
+                project=script_args.wandb_project)
+        if run:
+            logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
+    except Exception as e:
+        logger.warning(f"WANDB: Failed to create run: {e}")
+
+
+def resume_previous_run(script_args):
+    wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
+    for run in wandb_api.runs(path=script_args.wandb_project):
+        logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
+        if run.state in ["crashed", "failed"] and run.name == script_args.wandb_run_name:
+            logger.info(f"CHECKPOINT: Resuming {run.id}")
+            return wandb.init(
+                id=run.id,
+                project=script_args.wandb_project,
+                resume="must",
+                name=run.name,
+            )
+    return None
 
 
 def main():
@@ -300,8 +291,15 @@ def main():
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
 
     # Weights & Biases integration
-    initialize_wandb(script_args, last_checkpoint)
-
+    if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
+        script_args.log_with = 'wandb'
+        initialize_wandb(script_args, last_checkpoint)
+    else:
+        script_args.log_with = None
+        logger.info(f"WANDB_API_KEY: {os.environ.get('WANDB_API_KEY')}, WANDB_PROJECT: {script_args.wandb_project}")
+        logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
+        
+    # Load base model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
         trust_remote_code=script_args.trust_remote_code,

@@ -19,7 +19,7 @@ spec:
     - name: workspace_pvc_class
       value: 'csi-rbd-sc'
     - name: hf_api_token
-      value: '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'
+      value: ''
     - name: e2e_tir_access_token
       value: ''
     - name: e2e_tir_api_key
@@ -32,8 +32,12 @@ spec:
       value: ''
     - name: e2e_tir_api_host
       value: ''
+    # run_name should be unique on a per-run basis, especially if reporting
+    # to wandb or sharing PVCs between runs.
     - name: run_name
-      value: 'gemma-7b'
+      value: ''
+    # Training parameters. Model IDs are HuggingFace identifiers to pull down,
+    # or a path to your model relative to the PVC root.
     - name: model
       value: 'google/gemma-7b'
     - name: dataset_name
@@ -41,7 +45,7 @@ spec:
     - name: dataset_text_field
       value: 'text'
     - name: dataset_type
-      value: 'huggingface'
+      value: 'huggingface' # can be tir-dataset, eos-bucket as well
     - name: dataset_bucket
       value: ''
     - name: dataset_path
@@ -63,7 +67,7 @@ spec:
     - name: max_steps
       value: -1
     - name: save_steps
-      value: 100
+      value: 500
     - name: save_total_limit
       value: 10
     - name: use_peft
@@ -80,6 +84,7 @@ spec:
       value: 100
     - name: trainer_gpus
       value: 1
+    # Training number of CPU cores
     - name: trainer_cores
       value: 8
     - name: ephemeral_storage
@@ -91,17 +96,20 @@ spec:
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
-      value: 'a100'
+      value: ''
+    # WandB integration parameters
     - name: wandb_key
       value: ''
     - name: wandb_project
       value: ''
+    - name: wandb_run_name
+      value: ''
     - name: learning_rate
       value: 2e-5
     - name: max_train_samples
-      value: 10
+      value: -1
     - name: max_eval_samples
-      value: 10
+      value: -1
     - name: workspace
       value: '/mnt/workspace'
     - name: torch_cache
@@ -122,6 +130,7 @@ spec:
         arguments:
           parameters:
           - name: finetuner_params
+            # Pass the params in as one string so we can template in the conditional flags
             value: >-
               --model_name={{workflow.parameters.model}}
               --dataset_name={{workflow.parameters.dataset_name}}
@@ -146,6 +155,10 @@ spec:
               --max_eval_samples={{workflow.parameters.max_eval_samples}}
               --prompt_template_base64={{workflow.parameters.prompt_template_base64}}
               --resume={{workflow.parameters.resume}}
+              --wandb_project={{workflow.parameters.wandb_project}}
+              --wandb_run_name={{workflow.parameters.wandb_run_name}}
+              --seq_length={{workflow.parameters.seq_length}}
+              --run_name={{workflow.parameters.run_name}}
           - name: wandb_key
             value: "{{workflow.parameters.wandb_key}}"
           - name: trainer_ram
@@ -158,6 +171,8 @@ spec:
             value: "{{workflow.parameters.torch_cache}}"
           - name: transformers_cache
             value: "{{workflow.parameters.transformers_cache}}"
+          - name: hf_api_token
+            value: "{{workflow.parameters.hf_api_token}}"
           - name: e2e_tir_access_token
             value: "{{workflow.parameters.e2e_tir_access_token}}"
           - name:  e2e_tir_api_key
@@ -176,6 +191,7 @@ spec:
         - name: finetuner_params
         - name: wandb_key
         - name: torch_cache
+        - name: hf_api_token
         - name: trainer_ram
         - name: trainer_cores
         - name: trainer_gpus
@@ -216,9 +232,9 @@ spec:
       - name: TORCH_EXTENSIONS_DIR
         value: "{{inputs.parameters.torch_cache}}"
       - name: HF_API_TOKEN
-        value: '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'
+        value: "{{inputs.parameters.hf_api_token}}"
       - name: HF_TOKEN
-        value: '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'
+        value: "{{inputs.parameters.hf_api_token}}"
       - name: HF_HOME
         value: "{{inputs.parameters.transformers_cache}}"   
       - name: E2E_TIR_ACCESS_TOKEN

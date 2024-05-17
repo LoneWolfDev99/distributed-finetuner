@@ -158,6 +158,7 @@ spec:
               --wandb_project={{workflow.parameters.wandb_project}}
               --wandb_run_name={{workflow.parameters.wandb_run_name}}
               --seq_length={{workflow.parameters.seq_length}}
+              --run_name={{workflow.parameters.run_name}}
           - name: wandb_key
             value: "{{workflow.parameters.wandb_key}}"
           - name: trainer_ram
