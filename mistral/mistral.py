@@ -7,25 +7,22 @@ import time
 import base64
 import wandb
 import torch
-
+import transformers
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 import re
 import pathlib
 import subprocess as sp
-import os
-
-import transformers
-import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
 from peft import LoraConfig
 from tqdm import tqdm
-from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                          HfArgumentParser, TrainingArguments)
-from trl import SFTTrainer, is_xpu_available
+from transformers import (
+    AutoModelForCausalLM, AutoTokenizer,
+    HfArgumentParser, TrainingArguments)
+from trl import SFTTrainer
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +51,8 @@ class ScriptArguments:
     dataset_split: Optional[float] = field(default=0, metadata={"help": "training split ratio"})
     dataset_text_field: Optional[str] = field(default="text", metadata={"help": "the text field of the dataset"})
     log_with: Optional[str] = field(default="none", metadata={"help": "use 'wandb' to log with wandb"})
-    learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
-    batch_size: Optional[int] = field(default=64, metadata={"help": "the batch size"})
+    learning_rate: Optional[float] = field(default=2.5e-5, metadata={"help": "the learning rate"})
+    batch_size: Optional[int] = field(default=8, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
     gradient_accumulation_steps: Optional[int] = field(
         default=16, metadata={"help": "the number of gradient accumulation steps"}
@@ -85,10 +82,10 @@ class ScriptArguments:
             "help": "key word arguments to be passed along `torch.utils.checkpoint.checkpoint` method - e.g. `use_reentrant=False`"
         },
     )
-    run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
+    run_name: Optional[str] = field(default=None, metadata={"help": "TIR finetuning job name"})
     auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
-    wandb_key: Optional[str] = field(default=None, metadata={"help": "wandb key"})
     wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
+    wandb_run_name: Optional[str] = field(default=None, metadata={"help": "Run name for wandb project"})
     max_train_samples: Optional[int] = field(
         default=-1,
         metadata={
@@ -121,11 +118,13 @@ def gpu_memory():
 def download_dataset(script_args) -> str:
     try:
         dataset_download_path = '/home/jovyan/custom_dataset/'
-        minio_service = MinioService(access_key=script_args.dataset_accesskey,
-                                     secret_key=script_args.dataset_secretkey)
-        minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
-                                                   local_path=dataset_download_path,
-                                                   prefix=script_args.dataset_path)
+        minio_service = MinioService(
+            access_key=script_args.dataset_accesskey,
+            secret_key=script_args.dataset_secretkey)
+        minio_service.download_directory_recursive(
+            bucket_name=script_args.dataset_bucket,
+            local_path=dataset_download_path,
+            prefix=script_args.dataset_path)
         logger.info(f"Dataset downloaded to {dataset_download_path}{script_args.dataset_path}")
         return f"{dataset_download_path}{script_args.dataset_path}" if script_args.dataset_path else dataset_download_path
     except Exception as e:
@@ -160,12 +159,42 @@ def push_model(model_path: str, info: dict = {}):
     timestamp = datetime.now().strftime("%s")
     model_repo = model_repo_client.create(f"mistral7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
     model_id = model_repo.id
-    model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
+    model_repo_client.push_model(
+        model_path=model_path, prefix='',
+        model_id=model_id)
     return True
+
+    
+def initialize_wandb(script_args, last_checkpoint=None):
+    try:
+        if last_checkpoint is not None:
+            run = resume_previous_run(script_args)
+        else:
+            run = wandb.init(
+                name=script_args.wandb_run_name, 
+                project=script_args.wandb_project)
+    except Exception as e:
+        logger.warning(f"WANDB: Failed to create run: {e}")
+        return
+    logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
+
+
+def resume_previous_run(script_args):
+    wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
+    for run in wandb_api.runs(path=script_args.wandb_project):
+        logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
+        if run.state in ["crashed", "failed"] and run.name == script_args.wandb_run_name:
+            logger.info(f"CHECKPOINT: Resuming {run.id}")
+            return wandb.init(
+                id=run.id,
+                project=script_args.wandb_project,
+                resume="must",
+                name=run.name,
+            )
+    return None
 
 
 def main():
-
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
@@ -224,7 +253,9 @@ def main():
         eval_dataset = dataset["test"]
 
     if script_args.max_train_samples > 0:
-        max_train_samples = min(len(train_dataset), script_args.max_train_samples)
+        max_train_samples = min(
+            len(train_dataset),
+            script_args.max_train_samples)
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
@@ -238,10 +269,11 @@ def main():
     # Discover if we have any checkpoints to resume from.
     if script_args.resume:
         try:
-
             output_dir_list = os.listdir(script_args.output_dir)
-
-            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
+            checkpoints = sorted(
+                output_dir_list,
+                key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0,
+                reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
@@ -258,31 +290,15 @@ def main():
 
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
 
-    if not script_args.wandb_key:
-        logger.warning("WANDB_API_KEY: WANDB_API_KEY not found, disabling wandb.")
-        os.environ["WANDB_DISABLED"] = "True"
-
-    report_to = script_args.log_with
-
-    if not report_to and script_args.wandb_key:
-        # todo: check if main process when distributed is implemented
-        report_to = ["wandb"]
-        if last_checkpoint is not None:
-            wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
-            for run in wandb_api.runs(path=script_args.wandb_project):
-                logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
-                if run.state in ["crashed", "failed"] and run.name == script_args.run_name:
-                    logger.info(f"CHECKPOINT: Resuming {run.id}")
-                    run = wandb.init(
-                        id=run.id,
-                        project=script_args.wandb_project,
-                        resume="must",
-                        name=run.name,
-                    )
-                    break
-        else:
-            wandb.init(name=script_args.run_name, project=script_args.wandb_project)
-
+    # Weights & Biases integration
+    if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
+        script_args.log_with = 'wandb'
+        initialize_wandb(script_args, last_checkpoint)
+    else:
+        script_args.log_with = None
+        logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
+        
+    # Load base model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
         trust_remote_code=script_args.trust_remote_code,
@@ -327,16 +343,16 @@ def main():
         num_train_epochs=script_args.num_train_epochs,
         max_steps=script_args.max_steps,
         report_to=script_args.log_with,
+        run_name=script_args.run_name,
         save_steps=script_args.save_steps,
         save_total_limit=script_args.save_total_limit,
         gradient_checkpointing=script_args.gradient_checkpointing,
-        run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
         # TODO: uncomment that on the next release
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
 
-   # Log on each process the small summary:
+    # Log on each process the small summary:
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
@@ -349,6 +365,7 @@ def main():
             r=script_args.peft_lora_r,
             lora_alpha=script_args.peft_lora_alpha,
             bias="none",
+            lora_dropout=0.05,  # TODO: This should be available in the UI.
             task_type="CAUSAL_LM",
         )
     else:
@@ -357,7 +374,8 @@ def main():
     logger.info(f"initiating trainer. gpu memory free-  {gpu_memory()}")
     logger.info(f"device count: {torch.cuda.device_count()}")
     if torch.cuda.device_count() > 1:
-        # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
+        # keeps Trainer from trying its own
+        # DataParallelism when more than 1 gpu is available
         model.is_parallelizable = True
         model.model_parallel = True
 
@@ -372,7 +390,8 @@ def main():
         peft_config=peft_config,
         data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
     )
-    model.config.use_cache = False  # Silence the warnings. Re-enable for inference!
+    # Silence the warnings. Re-enable for inference!
+    model.config.use_cache = False
 
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
@@ -383,12 +402,10 @@ def main():
     final_path = os.path.join(script_args.output_dir, "final")
     trainer.save_model(final_path)
     metrics = train_result.metrics
-
     max_train_samples = (
         script_args.max_train_samples if script_args.max_train_samples > 0 else len(train_dataset)
     )
     metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-
     trainer.log_metrics("train", metrics)
     trainer.save_metrics("train", metrics)
     trainer.save_state()
@@ -397,13 +414,11 @@ def main():
         metrics = trainer.evaluate()
         max_eval_samples = script_args.max_eval_samples if script_args.max_eval_samples > 0 else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
         try:
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:
             perplexity = float("inf")
         metrics["perplexity"] = perplexity
-
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
