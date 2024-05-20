@@ -192,10 +192,10 @@ def main():
 
     # Weights & Biases integration
     if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
-        script_args.log_with = 'wandb'
+        script_args.log_with = ["tensorboard", "wandb"]
         initialize_wandb(script_args, last_checkpoint)
     else:
-        script_args.log_with = None
+        script_args.log_with = ["tensorboard"]
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -222,6 +222,7 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
+        logging_dir=f"{script_args.output_dir}/finetuning_metric/" #[TensorBoard] log directory
         # TODO: uncomment that on the next release
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
