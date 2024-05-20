@@ -394,7 +394,6 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
-        fp16=True, 
         optim="paged_adamw_8bit",
     )
     
