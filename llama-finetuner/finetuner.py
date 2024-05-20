@@ -13,7 +13,7 @@ from datasets import load_dataset
 from e2enetworks.cloud import tir
 from peft import LoraConfig
 from tqdm import tqdm
-from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
+from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
                           HfArgumentParser, TrainingArguments)
 from trl import SFTTrainer, is_xpu_available
 
@@ -227,7 +227,7 @@ def main():
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
 
-   # Log on each process the small summary:
+    # Log on each process the small summary:
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
