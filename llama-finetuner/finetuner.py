@@ -4,6 +4,7 @@ import os
 import random
 import re
 import sys
+import transformers
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -13,11 +14,11 @@ from e2enetworks.cloud import tir
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
-                          HfArgumentParser, TrainingArguments)
+                          HfArgumentParser, TrainingArguments, AutoTokenizer)
 from trl import SFTTrainer, is_xpu_available
 
 from helpers import (decode_base64, download_dataset, get_dataset_format,
-                     gpu_memory, load_custom_dataset, push_model)
+                     gpu_memory, load_custom_dataset, push_model, initialize_wandb)
 
 logger = logging.getLogger(__name__)
 
@@ -77,10 +78,10 @@ class ScriptArguments:
             "help": "key word arguments to be passed along `torch.utils.checkpoint.checkpoint` method - e.g. `use_reentrant=False`"
         },
     )
-    run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
+    run_name: Optional[str] = field(default=None, metadata={"help": "TIR finetuning job name"})
     auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
-    wandb_key: Optional[str] = field(default=None, metadata={"help": "wandb key"})
     wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
+    wandb_run_name: Optional[str] = field(default=None, metadata={"help": "Run name for wandb project"})
     max_train_samples: Optional[int] = field(
         default=-1,
         metadata={
@@ -189,36 +190,21 @@ def main():
 
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
 
-    if not script_args.wandb_key:
-        logger.warning("WANDB_API_KEY: WANDB_API_KEY not found, disabling wandb.")
-        os.environ["WANDB_DISABLED"] = "True"
-
-    report_to = script_args.log_with
-
-    if not report_to and script_args.wandb_key:
-        # todo: check if main process when distributed is implemented
-        report_to = ["wandb"]
-        if last_checkpoint is not None:
-            wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
-            for run in wandb_api.runs(path=script_args.wandb_project):
-                logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
-                if run.state in ["crashed", "failed"] and run.name == script_args.run_name:
-                    logger.info(f"CHECKPOINT: Resuming {run.id}")
-                    run = wandb.init(
-                        id=run.id,
-                        project=script_args.wandb_project,
-                        resume="must",
-                        name=run.name,
-                    )
-                    break
-        else:
-            wandb.init(name=script_args.run_name,project=script_args.wandb_project)
+    # Weights & Biases integration
+    if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
+        script_args.log_with = 'wandb'
+        initialize_wandb(script_args, last_checkpoint)
+    else:
+        script_args.log_with = None
+        logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
         trust_remote_code=script_args.trust_remote_code,
         token=script_args.use_auth_token,
     )
+    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
 
     # Step 3: Define the training arguments
     training_args = TrainingArguments(
@@ -268,7 +254,8 @@ def main():
         train_dataset=train_dataset,
         dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'training_text',
         eval_dataset=eval_dataset,
-        peft_config=peft_config
+        peft_config=peft_config,
+        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
     )
 
     if last_checkpoint is not None:

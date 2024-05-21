@@ -21,24 +21,11 @@ from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
 from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from tqdm import tqdm
-from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
-                          DataCollatorForLanguageModeling, HfArgumentParser, TrainingArguments)
+from transformers import (
+    AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+    DataCollatorForLanguageModeling, HfArgumentParser, 
+    TrainingArguments,)
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullOptimStateDictConfig, FullStateDictConfig
-
-# Finetuning overview:
-# Parses script arguments.
-# Sets up logging.
-# Initializes some variables and services.
-# Loads the dataset.
-# Tokenizes the dataset.
-# Initializes the model and tokenizer.
-# Defines training arguments.
-# Initializes the Trainer.
-# Trains the model.
-# Evaluates the model.
-# Logs metrics.
-# Saves the trained model.
-# Pushes the model to a repository.
 
 logger = logging.getLogger(__name__)
 
@@ -98,10 +85,10 @@ class ScriptArguments:
             "help": "key word arguments to be passed along `torch.utils.checkpoint.checkpoint` method - e.g. `use_reentrant=False`"
         },
     )
-    run_name: Optional[str] = field(default=None, metadata={"help": "run name for wandb"})
+    run_name: Optional[str] = field(default=None, metadata={"help": "TIR finetuning job name"})
     auto_find_batch_size: Optional[str] = field(default=False, metadata={"help": "Whether to find a batch size that will fit into memory automatically through exponential decay, avoiding CUDA Out-of-Memory errors. Requires accelerate to be installed (pip install accelerate)"})
-    wandb_key: Optional[str] = field(default=None, metadata={"help": "wandb key"})
     wandb_project: Optional[str] = field(default=None, metadata={"help": "wandb project"})
+    wandb_run_name: Optional[str] = field(default=None, metadata={"help": "Run name for wandb project"})
     max_train_samples: Optional[int] = field(
         default=-1,
         metadata={
@@ -134,11 +121,13 @@ def gpu_memory():
 def download_dataset(script_args) -> str:
     try:
         dataset_download_path = '/home/jovyan/custom_dataset/'
-        minio_service = MinioService(access_key=script_args.dataset_accesskey,
-                                     secret_key=script_args.dataset_secretkey)
-        minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
-                                                   local_path=dataset_download_path,
-                                                   prefix=script_args.dataset_path)
+        minio_service = MinioService(
+            access_key=script_args.dataset_accesskey,
+            secret_key=script_args.dataset_secretkey)
+        minio_service.download_directory_recursive(
+            bucket_name=script_args.dataset_bucket,
+            local_path=dataset_download_path,
+            prefix=script_args.dataset_path)
         logger.info(f"Dataset downloaded to {dataset_download_path}{script_args.dataset_path}")
         return f"{dataset_download_path}{script_args.dataset_path}" if script_args.dataset_path else dataset_download_path
     except Exception as e:
@@ -175,6 +164,35 @@ def push_model(model_path: str, info: dict = {}):
     model_id = model_repo.id
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
     return True
+
+
+def initialize_wandb(script_args, last_checkpoint=None):
+    try:
+        if last_checkpoint is not None:
+            run = resume_previous_run(script_args)
+        else:
+            run = wandb.init(
+                name=script_args.wandb_run_name, 
+                project=script_args.wandb_project)
+    except Exception as e:
+        logger.warning(f"WANDB: Failed to create run: {e}")
+        return
+    logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
+
+
+def resume_previous_run(script_args):
+    wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
+    for run in wandb_api.runs(path=script_args.wandb_project):
+        logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
+        if run.state in ["crashed", "failed"] and run.name == script_args.wandb_run_name:
+            logger.info(f"CHECKPOINT: Resuming {run.id}")
+            return wandb.init(
+                id=run.id,
+                project=script_args.wandb_project,
+                resume="must",
+                name=run.name,
+            )
+    return None
 
 
 def main():
@@ -265,33 +283,16 @@ def main():
 
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
 
-    if not script_args.wandb_key:
-        logger.warning("WANDB_API_KEY: WANDB_API_KEY not found, disabling wandb.")
-        os.environ["WANDB_DISABLED"] = "True"
-
-    report_to = script_args.log_with
-
-    if not report_to and script_args.wandb_key:
-        # todo: check if main process when distributed is implemented
-        report_to = ["wandb"]
-        if last_checkpoint is not None:
-            wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
-            for run in wandb_api.runs(path=script_args.wandb_project):
-                logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
-                if run.state in ["crashed", "failed"] and run.name == script_args.run_name:
-                    logger.info(f"CHECKPOINT: Resuming {run.id}")
-                    run = wandb.init(
-                        id=run.id,
-                        project=script_args.wandb_project,
-                        resume="must",
-                        name=run.name,
-                    )
-                    break
-        else:
-            wandb.init(name=script_args.run_name, project=script_args.wandb_project)
+    # Weights & Biases integration
+    if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
+        script_args.log_with = 'wandb'
+        initialize_wandb(script_args, last_checkpoint)
+    else:
+        script_args.log_with = None
+        logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=script_args.load_in_4bit,
+        load_in_4bit=True,
         bnb_4bit_use_double_quant=True,
         bnb_4bit_compute_dtype=torch.bfloat16
     )
@@ -344,11 +345,20 @@ def main():
     # Step 4: Define the LoraConfig
     if script_args.use_peft:
         peft_config = LoraConfig(
-            r=8,
-            lora_alpha=16,
-            target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj","lm_head",],
+            r=script_args.peft_lora_r,
+            lora_alpha=script_args.peft_lora_alpha,
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+                "lm_head",
+            ],
             bias="none",
-            lora_dropout=0.05,  # Conventional
+            lora_dropout=0.05,
             task_type="CAUSAL_LM",
         )
         model = get_peft_model(model, peft_config)
@@ -384,9 +394,7 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
-        fp16=True, 
         optim="paged_adamw_8bit",
-        # report_to="wandb",
     )
     
     # Step 7: Define the Trainer
