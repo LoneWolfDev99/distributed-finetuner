@@ -176,7 +176,8 @@ def main():
     if script_args.resume and os.path.exists(script_args.output_dir):
         try:
             output_dir_list = os.listdir(script_args.output_dir)
-            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
+            checkpoints_dir_list = [directory for directory in output_dir_list if ('checkpoint-' in directory)]
+            checkpoints = sorted(checkpoints_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
