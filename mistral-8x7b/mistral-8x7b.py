@@ -289,6 +289,7 @@ def main():
         initialize_wandb(script_args, last_checkpoint)
     else:
         script_args.log_with = None
+        os.environ["WANDB_DISABLED"] = "True"
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
     bnb_config = BitsAndBytesConfig(
