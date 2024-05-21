@@ -199,13 +199,13 @@ def make_finetuning_metric_json(output_dir):
     ea.Reload()
     logger.info(f"PREPARING_METRIC_JSON | Tags={ea.Tags()}")
     metric_json_path = f'{output_dir}finetuning_metric_json/'
-    os.makedirs(metric_json_path, exist_ok=True)
     for key_name in ea.Tags()['scalars']:
-        make_metric_json_file(ea, key_name)
+        make_metric_json_file(ea, metric_json_path, key_name)
 
 
 def make_metric_json_file(ea, metric_json_path, key_name):
     try:
+        os.makedirs(os.path.dirname(f'{metric_json_path}{key_name}.json'), exist_ok=True)
         pd.DataFrame(ea.Scalars(key_name)).to_json(f'{metric_json_path}{key_name}.json')
     except Exception as e:
         logger.error(f"MAKE_FINETUNING_METRIC_JSON | KEY_NAME={key_name} | ERROR={e}")
