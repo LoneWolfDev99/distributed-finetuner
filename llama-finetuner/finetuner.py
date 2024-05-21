@@ -17,7 +17,7 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfi
                           HfArgumentParser, TrainingArguments)
 from trl import SFTTrainer, is_xpu_available
 
-from helpers import (decode_base64, download_dataset, get_dataset_format,
+from helpers import (decode_base64, download_dataset, make_finetuning_metric_json, get_dataset_format,
                      gpu_memory, load_custom_dataset, push_model, initialize_wandb)
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class ScriptArguments:
     output_dir: Optional[str] = field(default="output", metadata={"help": "the output directory"})
     peft_lora_r: Optional[int] = field(default=64, metadata={"help": "the r parameter of the LoRA adapters"})
     peft_lora_alpha: Optional[int] = field(default=16, metadata={"help": "the alpha parameter of the LoRA adapters"})
-    logging_steps: Optional[int] = field(default=100, metadata={"help": "the number of logging steps"})
+    logging_steps: Optional[int] = field(default=5, metadata={"help": "the number of logging steps"})
     use_auth_token: Optional[bool] = field(default=True, metadata={"help": "Use HF auth token to access the model"})
     num_train_epochs: Optional[int] = field(default=3, metadata={"help": "the number of training epochs"})
     max_steps: Optional[int] = field(default=-1, metadata={"help": "the number of training steps"})
@@ -222,7 +222,7 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
-        logging_dir=f"{script_args.output_dir}finetuning_metric/" #[TensorBoard] log directory
+        logging_dir=f"{script_args.output_dir}finetuning_metric/"  # [TensorBoard] log directory
         # TODO: uncomment that on the next release
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
@@ -294,6 +294,7 @@ def main():
 
     logger.info(f"eval metrics {metrics}")
 
+    make_finetuning_metric_json(script_args.output_dir)
     push_model(script_args.output_dir, metrics)
 
 

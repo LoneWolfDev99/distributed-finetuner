@@ -15,6 +15,7 @@ import pyarrow.parquet as parquet
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
+from tensorboard.backend.event_processing import event_accumulator
 
 ARROW = 'arrow'
 CSV = 'csv'
@@ -162,7 +163,7 @@ def arrow_loader(file_path):
     arrow_file_contents = pd.read_feather(file_path)
     for row in arrow_file_contents.iterrows():
         yield row
-        
+
 
 def initialize_wandb(script_args, last_checkpoint=None):
     try:
@@ -191,3 +192,20 @@ def resume_previous_run(script_args):
                 name=run.name,
             )
     return None
+
+
+def make_finetuning_metric_json(output_dir):
+    ea = event_accumulator.EventAccumulator(f"{output_dir}finetuning_metric/")
+    ea.Reload()
+    logger.info(f"PREPARING_METRIC_JSON | Tags={ea.Tags()}")
+    metric_json_path = f'{output_dir}finetuning_metric_json/'
+    os.makedirs(metric_json_path, exist_ok=True)
+    for key_name in ea.Tags()['scalars']:
+        make_metric_json_file(ea, key_name)
+
+
+def make_metric_json_file(ea, metric_json_path, key_name):
+    try:
+        pd.DataFrame(ea.Scalars(key_name)).to_json(f'{metric_json_path}{key_name}.json')
+    except Exception as e:
+        logger.error(f"MAKE_FINETUNING_METRIC_JSON | KEY_NAME={key_name} | ERROR={e}")
