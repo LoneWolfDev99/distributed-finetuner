@@ -68,7 +68,7 @@ def check_file_type(file_path) -> tuple[bool, str]:
     return False, file_extension
 
 
-def get_allowed_files(dataset_folder)-> str:
+def get_allowed_files(dataset_folder) -> str:
     files = []
     for file in os.listdir(dataset_folder):
         file_path = os.path.join(dataset_folder, file)
@@ -195,17 +195,24 @@ def resume_previous_run(script_args):
 
 
 def make_finetuning_metric_json(output_dir):
+    all_metrics = {}
     ea = event_accumulator.EventAccumulator(f"{output_dir}finetuning_metric/")
     ea.Reload()
     logger.info(f"PREPARING_METRIC_JSON | Tags={ea.Tags()}")
-    metric_json_path = f'{output_dir}finetuning_metric_json/'
+    all_metric_json_path = f'{output_dir}all_metric.json'
     for key_name in ea.Tags()['scalars']:
-        make_metric_json_file(ea, metric_json_path, key_name)
+        update_metric_dict(ea, all_metrics, key_name)
+    print(all_metrics)
+    make_metric_json_file(all_metric_json_path, all_metrics)
 
 
-def make_metric_json_file(ea, metric_json_path, key_name):
+def make_metric_json_file(all_metric_json_path: str, all_metrics: dict):
+    with open(all_metric_json_path, 'w') as file:
+        file.write(json.dumps(all_metrics))
+
+
+def update_metric_dict(ea, all_metric_json, key_name):
     try:
-        os.makedirs(os.path.dirname(f'{metric_json_path}{key_name}.json'), exist_ok=True)
-        pd.DataFrame(ea.Scalars(key_name)).to_json(f'{metric_json_path}{key_name}.json')
+        all_metric_json[key_name] = pd.DataFrame(ea.Scalars(key_name)).to_dict()
     except Exception as e:
         logger.error(f"MAKE_FINETUNING_METRIC_JSON | KEY_NAME={key_name} | ERROR={e}")
