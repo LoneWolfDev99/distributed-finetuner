@@ -105,9 +105,9 @@ def set_run_value(key_name: str, value: str | int) -> bool:
     else:
         run_info_dict = {}
     run_info_dict[key_name] = value
-    with open(LAST_RUN_INFO_PATH) as run_file:
+    with open(LAST_RUN_INFO_PATH, 'w') as run_file:
         run_file.write(json.dumps(run_info_dict))
-        return True
+        logger.info(f"VALUE_SET | key_name={key_name} -> value={value}")
 
 
 def get_run_value(key_name):
