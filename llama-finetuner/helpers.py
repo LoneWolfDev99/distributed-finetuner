@@ -199,7 +199,7 @@ def make_finetuning_metric_json(output_dir):
     ea = event_accumulator.EventAccumulator(f"{output_dir}finetuning_metric/")
     ea.Reload()
     logger.info(f"PREPARING_METRIC_JSON | Tags={ea.Tags()}")
-    all_metric_json_path = f'{output_dir}all_metric.json'
+    all_metric_json_path = f'{output_dir}all_finetuning_metric.json'
     for key_name in ea.Tags()['scalars']:
         update_metric_dict(ea, all_metrics, key_name)
     print(all_metrics)
