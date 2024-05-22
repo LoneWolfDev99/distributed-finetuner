@@ -23,6 +23,7 @@ JSON = 'json'
 PARQUET = 'parquet'
 ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
+LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 logger = logging.getLogger(__name__)
 
 
@@ -95,6 +96,26 @@ def retry_decorator(func_object):
                 time.sleep(10)
                 continue
     return wrapper
+
+
+def set_run_value(key_name: str, value: str | int) -> bool:
+    if os.path.exists(LAST_RUN_INFO_PATH):
+        with open(LAST_RUN_INFO_PATH) as run_file:
+            run_info_dict = json.loads(run_file.read())
+    else:
+        run_info_dict = {}
+    run_info_dict[key_name] = value
+    with open(LAST_RUN_INFO_PATH) as run_file:
+        run_file.write(json.dumps(run_info_dict))
+        return True
+
+
+def get_run_value(key_name):
+    if not os.path.exists(LAST_RUN_INFO_PATH):
+        return None
+    with open(LAST_RUN_INFO_PATH) as run_file:
+        run_info_dict = json.loads(run_file.read())
+    return run_info_dict.get(key_name)
 
 
 @retry_decorator
