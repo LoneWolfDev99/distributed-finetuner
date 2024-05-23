@@ -16,6 +16,7 @@ from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
 from tensorboard.backend.event_processing import event_accumulator
+from transformers import TrainerCallback
 
 ARROW = 'arrow'
 CSV = 'csv'
@@ -243,3 +244,15 @@ def update_metric_dict(ea, all_metric_json, key_name):
         all_metric_json[key_name] = pd.DataFrame(ea.Scalars(key_name)).to_dict()
     except Exception as e:
         logger.error(f"MAKE_FINETUNING_METRIC_JSON | KEY_NAME={key_name} | ERROR={e}")
+
+
+class ExporterCallback(TrainerCallback):
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+        try:
+            print(f"args={args} | state={state} | control={control} | kwargs={kwargs}")
+            print(f"args={args.__dict__} | state={state.__dict__} | control={control.__dict__}")
+            make_finetuning_metric_json(args.output_dir)
+            push_model(args.output_dir, {})
+        except Exception as e:
+            logger.error(f"EXPORTER_CALLBACK_FAILED | ERROR={e}")

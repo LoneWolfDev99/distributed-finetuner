@@ -18,7 +18,7 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfi
 from trl import SFTTrainer, is_xpu_available
 
 from helpers import (decode_base64, download_dataset, make_finetuning_metric_json, get_dataset_format,
-                     gpu_memory, load_custom_dataset, push_model, initialize_wandb)
+                     gpu_memory, load_custom_dataset, push_model, initialize_wandb, ExporterCallback)
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +256,8 @@ def main():
         dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'training_text',
         eval_dataset=eval_dataset,
         peft_config=peft_config,
-        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
+        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+        callbacks=[ExporterCallback]
     )
 
     if last_checkpoint is not None:
