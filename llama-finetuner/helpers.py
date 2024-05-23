@@ -129,9 +129,9 @@ def push_model(model_path: str, info: dict = {}):
     if not model_id:
         model_repo = model_repo_client.create(f"llama2-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
         model_id = model_repo.id
-        model_id = set_run_value('model_id', model_id)
+        set_run_value('model_id', model_id)
     else:
-        model_repo._update_repo(model_id, score=info)
+        model_repo_client._update_repo(model_id, score=info)
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
 
 
@@ -230,7 +230,6 @@ def make_finetuning_metric_json(output_dir):
     all_metric_json_path = f'{output_dir}all_finetuning_metric.json'
     for key_name in ea.Tags()['scalars']:
         update_metric_dict(ea, all_metrics, key_name)
-    print(all_metrics)
     make_metric_json_file(all_metric_json_path, all_metrics)
 
 

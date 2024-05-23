@@ -180,6 +180,7 @@ def main():
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
+                last_checkpoint = None
                 logger.info("no checkpoint not found. training will start from step 0")
         except Exception as e:
             logger.error(f"failed to find last_checkpoint: {str(e)}")
