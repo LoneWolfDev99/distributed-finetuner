@@ -249,8 +249,6 @@ class ExporterCallback(TrainerCallback):
 
     def on_epoch_end(self, args, state, control, **kwargs):
         try:
-            print(f"args={args} | state={state} | control={control} | kwargs={kwargs}")
-            print(f"args={args.__dict__} | state={state.__dict__} | control={control.__dict__}")
             make_finetuning_metric_json(args.output_dir)
             push_model(args.output_dir, {})
         except Exception as e:
