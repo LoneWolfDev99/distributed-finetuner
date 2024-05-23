@@ -7,11 +7,11 @@ import pathlib
 import subprocess as sp
 import sys
 import time
-import wandb
 from datetime import datetime
 
 import pandas as pd
 import pyarrow.parquet as parquet
+import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
