@@ -25,6 +25,7 @@ ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def download_dataset(script_args) -> str:
@@ -129,7 +130,7 @@ def push_model(model_path: str, info: dict = {}):
         model_id = model_repo.id
         model_id = set_run_value('model_id', model_id)
     else:
-        model_repo.update_repo(model_id, score=info)
+        model_repo._update_repo(model_id, score=info)
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
 
 
