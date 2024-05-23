@@ -21,7 +21,7 @@ from peft import LoraConfig
 from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM, AutoTokenizer,
-    HfArgumentParser, TrainingArguments)
+    HfArgumentParser, TrainingArguments, BitsAndBytesConfig)
 from trl import SFTTrainer
 
 logger = logging.getLogger(__name__)
@@ -57,13 +57,17 @@ class ScriptArguments:
     gradient_accumulation_steps: Optional[int] = field(
         default=16, metadata={"help": "the number of gradient accumulation steps"}
     )
-    load_in_8bit: Optional[bool] = field(default=False, metadata={"help": "load the model in 8 bits precision"})
-    load_in_4bit: Optional[bool] = field(default=False, metadata={"help": "load the model in 4 bits precision"})
     use_peft: Optional[bool] = field(default=True, metadata={"help": "Wether to use PEFT or not to train adapters"})
     trust_remote_code: Optional[bool] = field(default=False, metadata={"help": "Enable `trust_remote_code`"})
     output_dir: Optional[str] = field(default="output", metadata={"help": "the output directory"})
-    peft_lora_r: Optional[int] = field(default=64, metadata={"help": "the r parameter of the LoRA adapters"})
-    peft_lora_alpha: Optional[int] = field(default=16, metadata={"help": "the alpha parameter of the LoRA adapters"})
+    peft_lora_r: Optional[int] = field(default=64, metadata={"help": "Lora attention dimension (the “rank”)"})
+    peft_lora_alpha: Optional[int] = field(default=16, metadata={"help": "The alpha parameter for Lora scaling"})
+    lora_dropout: Optional[float] = field(default=0.05, metadata={"help": "The dropout probability for Lora layers"})
+    lora_bias: Optional[str] = field(default="none", metadata={"help": "the corresponding biases will be updated during training"})
+    load_in_4bit: Optional[bool] = field(default=False, metadata={"This flag is used to enable 4-bit quantization"})
+    bnb_4bit_compute_dtype: Optional[str] = field(default="bfloat16", metadata={"This sets the computational type"})
+    bnb_4bit_quant_type: Optional[str] = field(default="fp4", metadata={"This sets the quantization data type in the bnb.nn.Linear4Bit layers"})
+    bnb_4bit_use_double_quant: Optional[bool] = field(default=False, metadata={"Quantization constants from the first quantization are quantized again"})
     logging_steps: Optional[int] = field(default=500, metadata={"help": "the number of logging steps"})
     use_auth_token: Optional[bool] = field(default=True, metadata={"help": "Use HF auth token to access the model"})
     num_train_epochs: Optional[int] = field(default=3, metadata={"help": "the number of training epochs"})
@@ -298,9 +302,29 @@ def main():
         os.environ["WANDB_DISABLED"] = "True"
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
+    # Bitsandbytes configuration
+    if script_args.load_in_4bit:
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=script_args.load_in_4bit,
+            bnb_4bit_use_double_quant=script_args.bnb_4bit_use_double_quant,
+            bnb_4bit_quant_type=script_args.bnb_4bit_quant_type,
+            bnb_4bit_compute_dtype=script_args.bnb_4bit_compute_dtype,
+        )
+        logger.info(
+            f"Bitsandbytes quantization is enabled with the following configuration:\n"
+            f"  load_in_4bit: {script_args.load_in_4bit}\n"
+            f"  bnb_4bit_use_double_quant: {script_args.bnb_4bit_use_double_quant}\n"
+            f"  bnb_4bit_quant_type: {script_args.bnb_4bit_quant_type}\n"
+            f"  bnb_4bit_compute_dtype: {script_args.bnb_4bit_compute_dtype}"
+        )
+    else:
+        bnb_config = None
+        logger.info("Bitsandbytes quantization is disabled.")
+    
     # Load base model
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
+        quantization_config=bnb_config,
         trust_remote_code=script_args.trust_remote_code,
         token=script_args.use_auth_token,
     )
@@ -364,8 +388,8 @@ def main():
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
             lora_alpha=script_args.peft_lora_alpha,
-            bias="none",
-            lora_dropout=0.05,  # TODO: This should be available in the UI.
+            bias=script_args.lora_bias,
+            lora_dropout=script_args.lora_dropout,
             task_type="CAUSAL_LM",
         )
     else:

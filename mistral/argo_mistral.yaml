@@ -148,6 +148,12 @@ spec:
               --use_peft={{workflow.parameters.use_peft}}
               --peft_lora_r={{workflow.parameters.peft_lora_r}}
               --peft_lora_alpha={{workflow.parameters.peft_lora_alpha}}
+              --lora_dropout={{workflow.parameters.lora_dropout}}
+              --lora_bias={{workflow.parameters.lora_bias}}
+              --load_in_4bit={{workflow.parameters.load_in_4bit}}
+              --bnb_4bit_compute_dtype={{workflow.parameters.bnb_4bit_compute_dtype}}
+              --bnb_4bit_quant_type={{workflow.parameters.bnb_4bit_quant_type}}
+              --bnb_4bit_use_double_quant={{workflow.parameters.bnb_4bit_use_double_quant}}
               --max_steps={{workflow.parameters.max_steps}}
               --save_steps={{workflow.parameters.save_steps}}
               --save_total_limit={{workflow.parameters.save_total_limit}}
