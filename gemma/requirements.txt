@@ -8,5 +8,4 @@ bitsandbytes
 tokenizers
 accelerate
 e2enetworks
-bitsandbytes
 

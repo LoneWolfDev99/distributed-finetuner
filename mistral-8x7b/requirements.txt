@@ -11,4 +11,3 @@ scipy
 ipywidgets
 matplotlib
 e2enetworks
-bitsandbytes
