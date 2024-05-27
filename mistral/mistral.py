@@ -311,11 +311,11 @@ def main():
             bnb_4bit_compute_dtype=script_args.bnb_4bit_compute_dtype,
         )
         logger.info(
-            f"Bitsandbytes quantization is enabled with the following configuration:\n"
-            f"  load_in_4bit: {script_args.load_in_4bit}\n"
-            f"  bnb_4bit_use_double_quant: {script_args.bnb_4bit_use_double_quant}\n"
-            f"  bnb_4bit_quant_type: {script_args.bnb_4bit_quant_type}\n"
-            f"  bnb_4bit_compute_dtype: {script_args.bnb_4bit_compute_dtype}"
+            f"\nBitsandbytes quantization is enabled with the following configuration:\n"
+            f"  -- load_in_4bit: {script_args.load_in_4bit}\n"
+            f"  -- bnb_4bit_compute_dtype: {script_args.bnb_4bit_compute_dtype}\n"
+            f"  -- bnb_4bit_quant_type: {script_args.bnb_4bit_quant_type}\n"
+            f"  -- bnb_4bit_use_double_quant: {script_args.bnb_4bit_use_double_quant}\n"
         )
     else:
         bnb_config = None
@@ -328,7 +328,9 @@ def main():
         trust_remote_code=script_args.trust_remote_code,
         token=script_args.use_auth_token,
     )
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(
+        script_args.model_name,
+        padding_side="right")
     tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
