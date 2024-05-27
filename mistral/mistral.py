@@ -2,27 +2,26 @@ import logging
 import math
 import os
 import random
+import re
 import sys
-import time
-import base64
-import wandb
+from dataclasses import dataclass, field
+from typing import Optional
+
 import torch
 import transformers
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional
-import re
-import pathlib
-import subprocess as sp
+import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
-from e2enetworks.cloud.tir.minio_service import MinioService
 from peft import LoraConfig
 from tqdm import tqdm
-from transformers import (
-    AutoModelForCausalLM, AutoTokenizer,
-    HfArgumentParser, TrainingArguments, BitsAndBytesConfig)
-from trl import SFTTrainer
+from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
+                          HfArgumentParser, TrainingArguments, AutoTokenizer)
+from trl import SFTTrainer, is_xpu_available
+
+from helpers import (ExporterCallback, decode_base64, download_dataset,
+                     get_dataset_format, gpu_memory, initialize_wandb,
+                     load_custom_dataset, make_finetuning_metric_json,
+                     push_model)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ class ScriptArguments:
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
-    model_name: Optional[str] = field(default="meta-llama/Llama-2-7b-chat-hf", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="mistralai/Mistral-7B-v0.1", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
         default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
     )
@@ -50,7 +49,7 @@ class ScriptArguments:
     log_level: Optional[str] = field(default="info", metadata={"help": "log level"})
     dataset_split: Optional[float] = field(default=0, metadata={"help": "training split ratio"})
     dataset_text_field: Optional[str] = field(default="text", metadata={"help": "the text field of the dataset"})
-    log_with: Optional[str] = field(default="none", metadata={"help": "use 'wandb' to log with wandb"})
+    log_with: Optional[str] = field(default="tensorboard", metadata={"help": "use 'wandb/tensorboard/etc' to log"})
     learning_rate: Optional[float] = field(default=2.5e-5, metadata={"help": "the learning rate"})
     batch_size: Optional[int] = field(default=8, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
@@ -68,12 +67,12 @@ class ScriptArguments:
     bnb_4bit_compute_dtype: Optional[str] = field(default="bfloat16", metadata={"help": "This sets the computational type"})
     bnb_4bit_quant_type: Optional[str] = field(default="fp4", metadata={"help": "This sets the quantization data type in the bnb.nn.Linear4Bit layers"})
     bnb_4bit_use_double_quant: Optional[bool] = field(default=False, metadata={"help": "Quantization constants from the first quantization are quantized again"})
-    logging_steps: Optional[int] = field(default=500, metadata={"help": "the number of logging steps"})
+    logging_steps: Optional[int] = field(default=5, metadata={"help": "the number of logging steps"})
     use_auth_token: Optional[bool] = field(default=True, metadata={"help": "Use HF auth token to access the model"})
     num_train_epochs: Optional[int] = field(default=3, metadata={"help": "the number of training epochs"})
     max_steps: Optional[int] = field(default=-1, metadata={"help": "the number of training steps"})
     save_steps: Optional[int] = field(
-        default=300, metadata={"help": "Number of updates steps before two checkpoint saves"}
+        default=500, metadata={"help": "Number of updates steps before two checkpoint saves"}
     )
     save_total_limit: Optional[int] = field(default=10, metadata={"help": "Limits total number of checkpoints."})
     push_to_hub: Optional[bool] = field(default=False, metadata={"help": "Push the model to HF Hub"})
@@ -112,92 +111,8 @@ class ScriptArguments:
     resume: Optional[str] = field(default=True, metadata={"help": "resume from last checkpoint"})
 
 
-def gpu_memory():
-    command = "nvidia-smi --query-gpu=memory.free --format=csv"
-    memory_free_info = sp.check_output(command.split()).decode('ascii').split('\n')[:-1][1:]
-    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
-    return memory_free_values
-
-
-def download_dataset(script_args) -> str:
-    try:
-        dataset_download_path = '/home/jovyan/custom_dataset/'
-        minio_service = MinioService(
-            access_key=script_args.dataset_accesskey,
-            secret_key=script_args.dataset_secretkey)
-        minio_service.download_directory_recursive(
-            bucket_name=script_args.dataset_bucket,
-            local_path=dataset_download_path,
-            prefix=script_args.dataset_path)
-        logger.info(f"Dataset downloaded to {dataset_download_path}{script_args.dataset_path}")
-        return f"{dataset_download_path}{script_args.dataset_path}" if script_args.dataset_path else dataset_download_path
-    except Exception as e:
-        logger.error(e)
-        raise Exception(f"dataset_error -> {e}")
-
-
-def retry_push_model(func_object):
-    def wrapper(*args, **kwargs):
-        for i in range(3):
-            try:
-                return func_object(*args, **kwargs)
-            except Exception as e:
-                logger.error(f"ERROR_DURING_PUSH_MODEL | {e}")
-                time.sleep(10)
-                continue
-    return wrapper
-
-
-def get_dataset_format(path: str):
-    # function to return the file extension
-    file_extension = pathlib.Path(path).suffix
-    print(f"Dataset file {path} extension {file_extension}")
-    return "json" if file_extension[1:] in ["json", "jsonl"] else file_extension[1:]
-
-
-@retry_push_model
-def push_model(model_path: str, info: dict = {}):
-    model_repo_client = tir.Models()
-    job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
-    timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(f"mistral7b-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
-    model_id = model_repo.id
-    model_repo_client.push_model(
-        model_path=model_path, prefix='',
-        model_id=model_id)
-    return True
-
-
-def initialize_wandb(script_args, last_checkpoint=None):
-    try:
-        if last_checkpoint is not None:
-            run = resume_previous_run(script_args)
-        else:
-            run = wandb.init(
-                name=script_args.wandb_run_name, 
-                project=script_args.wandb_project)
-    except Exception as e:
-        logger.warning(f"WANDB: Failed to create run: {e}")
-        return
-    logger.info(f"WANDB: Run is created with name: {run.name}, project: {script_args.wandb_project}")
-
-
-def resume_previous_run(script_args):
-    wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
-    for run in wandb_api.runs(path=script_args.wandb_project):
-        logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
-        if run.state in ["crashed", "failed"] and run.name == script_args.wandb_run_name:
-            logger.info(f"CHECKPOINT: Resuming {run.id}")
-            return wandb.init(
-                id=run.id,
-                project=script_args.wandb_project,
-                resume="must",
-                name=run.name,
-            )
-    return None
-
-
 def main():
+
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
@@ -219,18 +134,15 @@ def main():
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
         dataset_path = download_dataset(script_args)
-
-        dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
-        train_dataset = load_dataset(dataset_type, data_files=[dataset_path], split="train")
-
+        train_dataset = load_custom_dataset(dataset_path)
     else:
         logger.info(f"loading dataset {script_args.dataset_name} from huggingface")
         train_dataset = load_dataset(script_args.dataset_name, split="train")
 
     if script_args.prompt_template_base64:
-        prompt_template = str(base64.b64decode(script_args.prompt_template_base64))
-        logger.info(f"adding text column to dataset {prompt_template}")
+        prompt_template = decode_base64(script_args.prompt_template_base64)
+        logger.info(f"adding training_text column to dataset {prompt_template}")
         columns = re.findall(r'\[(.*?)\]', prompt_template)
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
@@ -241,11 +153,11 @@ def main():
                 output_text = prompt_template
                 for c in columns:
                     output_text = output_text.replace('[{}]'.format(c), example[c])
-                example["text"] = output_text
+                example["training_text"] = output_text
             return example
         train_dataset = train_dataset.map(prepare_prompt)
         for index in random.sample(range(len(train_dataset)), 2):
-            logger.info(f"Sample {index} after adding text to dataset: {train_dataset[index]['text']}.")
+            logger.info(f"Sample {index} after adding training_text to dataset: {train_dataset[index]['training_text']}.")
 
     eval_dataset = None
 
@@ -256,9 +168,7 @@ def main():
         eval_dataset = dataset["test"]
 
     if script_args.max_train_samples > 0:
-        max_train_samples = min(
-            len(train_dataset),
-            script_args.max_train_samples)
+        max_train_samples = min(len(train_dataset), script_args.max_train_samples)
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
@@ -270,22 +180,18 @@ def main():
         eval_dataset = eval_dataset.select(range(max_eval_samples))
 
     # Discover if we have any checkpoints to resume from.
-    if script_args.resume:
+    if script_args.resume and os.path.exists(script_args.output_dir):
         try:
             output_dir_list = os.listdir(script_args.output_dir)
-            checkpoints = sorted(
-                output_dir_list,
-                key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0,
-                reverse=True)
+            checkpoints_dir_list = [directory for directory in output_dir_list if ('checkpoint-' in directory)]
+            checkpoints = sorted(checkpoints_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
+                last_checkpoint = None
                 logger.info("no checkpoint not found. training will start from step 0")
-        except FileNotFoundError:
-            logger.info("failed to find last_checkpoint: output directory does not exist")
-            last_checkpoint = None
         except Exception as e:
-            logger.info(f"failed to find last_checkpoint: {str(e)}")
+            logger.error(f"failed to find last_checkpoint: {str(e)}")
             last_checkpoint = None
             raise Exception("failed to check if last checkpoint exists")
     else:
@@ -295,11 +201,10 @@ def main():
 
     # Weights & Biases integration
     if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
-        script_args.log_with = 'wandb'
+        script_args.log_with = ["tensorboard", "wandb"]
         initialize_wandb(script_args, last_checkpoint)
     else:
-        script_args.log_with = None
-        os.environ["WANDB_DISABLED"] = "True"
+        script_args.log_with = ["tensorboard"]
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
     # Bitsandbytes configuration
@@ -374,6 +279,7 @@ def main():
         save_total_limit=script_args.save_total_limit,
         gradient_checkpointing=script_args.gradient_checkpointing,
         auto_find_batch_size=script_args.auto_find_batch_size,
+        logging_dir=f"{script_args.output_dir}finetuning_metric/"  # [TensorBoard] log directory
         # TODO: uncomment that on the next release
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
@@ -414,7 +320,8 @@ def main():
         dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'text',
         eval_dataset=tokenized_eval_dataset,
         peft_config=peft_config,
-        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
+        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+        callbacks=[ExporterCallback]
     )
     # Silence the warnings. Re-enable for inference!
     model.config.use_cache = False
@@ -428,10 +335,12 @@ def main():
     final_path = os.path.join(script_args.output_dir, "final")
     trainer.save_model(final_path)
     metrics = train_result.metrics
+
     max_train_samples = (
         script_args.max_train_samples if script_args.max_train_samples > 0 else len(train_dataset)
     )
     metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+
     trainer.log_metrics("train", metrics)
     trainer.save_metrics("train", metrics)
     trainer.save_state()
@@ -440,18 +349,20 @@ def main():
         metrics = trainer.evaluate()
         max_eval_samples = script_args.max_eval_samples if script_args.max_eval_samples > 0 else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+
         try:
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:
             perplexity = float("inf")
         metrics["perplexity"] = perplexity
+
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
     logger.info(f"eval metrics {metrics}")
 
-    if not push_model(script_args.output_dir, metrics):
-        raise Exception("failed to push model")
+    make_finetuning_metric_json(script_args.output_dir)
+    push_model(script_args.output_dir, metrics)
 
 
 if __name__ == "__main__":
