@@ -10,4 +10,4 @@ accelerate
 scipy
 ipywidgets
 matplotlib
-e2enetworks 
+e2enetworks

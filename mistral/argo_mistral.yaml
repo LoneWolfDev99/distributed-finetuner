@@ -76,6 +76,18 @@ spec:
       value: 64
     - name: peft_lora_alpha
       value: 16
+    - name: lora_dropout
+      value: 0.05
+    - name: lora_bias
+      value: 'none'
+    - name: load_in_4bit
+      value: 'false'
+    - name: bnb_4bit_compute_dtype
+      value: 'bfloat16'
+    - name: bnb_4bit_quant_type
+      value: 'fp4'
+    - name: bnb_4bit_use_double_quant
+      value: 'false'
     - name: trust_remote_code
       value: 'false'
     - name: use_auth_token
@@ -92,7 +104,7 @@ spec:
     - name: finetuner_image
       value: 'aimle2e/fine-tuner'
     - name: finetuner_tag
-      value: 'mistral_7b_v1'
+      value: 'mistral_7b_v2'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
@@ -148,6 +160,12 @@ spec:
               --use_peft={{workflow.parameters.use_peft}}
               --peft_lora_r={{workflow.parameters.peft_lora_r}}
               --peft_lora_alpha={{workflow.parameters.peft_lora_alpha}}
+              --lora_dropout={{workflow.parameters.lora_dropout}}
+              --lora_bias={{workflow.parameters.lora_bias}}
+              --load_in_4bit={{workflow.parameters.load_in_4bit}}
+              --bnb_4bit_compute_dtype={{workflow.parameters.bnb_4bit_compute_dtype}}
+              --bnb_4bit_quant_type={{workflow.parameters.bnb_4bit_quant_type}}
+              --bnb_4bit_use_double_quant={{workflow.parameters.bnb_4bit_use_double_quant}}
               --max_steps={{workflow.parameters.max_steps}}
               --save_steps={{workflow.parameters.save_steps}}
               --save_total_limit={{workflow.parameters.save_total_limit}}

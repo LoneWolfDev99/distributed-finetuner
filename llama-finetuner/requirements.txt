@@ -8,3 +8,4 @@ tokenizers
 accelerate
 e2enetworks==1.2.5
 tensorboard
+bitsandbytes
