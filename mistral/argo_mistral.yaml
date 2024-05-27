@@ -76,6 +76,18 @@ spec:
       value: 64
     - name: peft_lora_alpha
       value: 16
+    - name: lora_dropout
+      value: 0.05
+    - name: lora_bias
+      value: 'none'
+    - name: load_in_4bit
+      value: 'false'
+    - name: bnb_4bit_compute_dtype
+      value: 'bfloat16'
+    - name: bnb_4bit_quant_type
+      value: 'fp4'
+    - name: bnb_4bit_use_double_quant
+      value: 'false'
     - name: trust_remote_code
       value: 'false'
     - name: use_auth_token
