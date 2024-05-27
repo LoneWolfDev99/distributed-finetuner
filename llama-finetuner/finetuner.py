@@ -48,7 +48,7 @@ class ScriptArguments:
     log_level: Optional[str] = field(default="info", metadata={"help": "log level"})
     dataset_split: Optional[float] = field(default=0, metadata={"help": "training split ratio"})
     dataset_text_field: Optional[str] = field(default="text", metadata={"help": "the text field of the dataset"})
-    log_with: Optional[str] = field(default="none", metadata={"help": "use 'wandb' to log with wandb"})
+    log_with: Optional[str] = field(default="tensorboard", metadata={"help": "use 'wandb/tensorboard/etc' to log"})
     learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
     batch_size: Optional[int] = field(default=4, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
