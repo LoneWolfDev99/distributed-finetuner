@@ -227,7 +227,7 @@ def make_finetuning_metric_json(output_dir):
     ea = event_accumulator.EventAccumulator(f"{output_dir}finetuning_metric/")
     ea.Reload()
     logger.info(f"PREPARING_METRIC_JSON | Tags={ea.Tags()}")
-    all_metric_json_path = f'{output_dir}all_finetuning_metric.json'
+    all_metric_json_path = f"{output_dir}finetuning_metric/all_finetuning_metric.json"
     for key_name in ea.Tags()['scalars']:
         update_metric_dict(ea, all_metrics, key_name)
     make_metric_json_file(all_metric_json_path, all_metrics)
@@ -240,7 +240,10 @@ def make_metric_json_file(all_metric_json_path: str, all_metrics: dict):
 
 def update_metric_dict(ea, all_metric_json, key_name):
     try:
-        all_metric_json[key_name] = pd.DataFrame(ea.Scalars(key_name)).to_dict()
+        truncated_df = df = pd.DataFrame(ea.Scalars(key_name))
+        if len(df) >= 2000:
+            truncated_df = df[0::20]
+        all_metric_json[key_name] = truncated_df.to_dict()
     except Exception as e:
         logger.error(f"MAKE_FINETUNING_METRIC_JSON | KEY_NAME={key_name} | ERROR={e}")
 
