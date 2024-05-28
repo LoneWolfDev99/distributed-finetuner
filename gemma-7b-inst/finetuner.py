@@ -13,16 +13,18 @@ from datasets import load_dataset
 from e2enetworks.cloud import tir
 from peft import LoraConfig
 from tqdm import tqdm
-from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
-                          HfArgumentParser, TrainingArguments, AutoTokenizer)
-from trl import SFTTrainer, is_xpu_available
-
-from helpers import (decode_base64, download_dataset, get_dataset_format,
-                     gpu_memory, load_custom_dataset, push_model, initialize_wandb)
+from transformers import (
+    AutoModelForCausalLM, BitsAndBytesConfig,
+    HfArgumentParser, TrainingArguments, AutoTokenizer)
+from trl import SFTTrainer
+from helpers import (
+    decode_base64, download_dataset, get_dataset_format,
+    gpu_memory, load_custom_dataset, push_model, initialize_wandb)
 
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
+
 
 # Define and parse arguments.
 @dataclass
@@ -32,7 +34,7 @@ class ScriptArguments:
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
-    model_name: Optional[str] = field(default="meta-llama/Meta-Llama-3-8B", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="mistralai/Mistral-7B-Instruct-v0.3", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
         default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
     )
@@ -143,6 +145,7 @@ def main():
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
             raise Exception("invalid prompt template")
+
         def prepare_prompt(example):
             if len(columns) > 0:
                 output_text = prompt_template
@@ -167,8 +170,6 @@ def main():
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-        #
-        # train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     if eval_dataset and script_args.max_eval_samples > 0:
         max_eval_samples = min(len(eval_dataset), script_args.max_eval_samples)
@@ -218,7 +219,7 @@ def main():
         )
     else:
         bnb_config = None
-        logger.info("Bitsandbytes quantization is disabled.")
+        logger.info("\nBitsandbytes quantization is disabled.\n")
 
     model = AutoModelForCausalLM.from_pretrained(
         script_args.model_name,
