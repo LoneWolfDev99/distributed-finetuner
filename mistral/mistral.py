@@ -279,7 +279,7 @@ def main():
         save_total_limit=script_args.save_total_limit,
         gradient_checkpointing=script_args.gradient_checkpointing,
         auto_find_batch_size=script_args.auto_find_batch_size,
-        logging_dir=f"{script_args.output_dir}finetuning_metric/"  # [TensorBoard] log directory
+        logging_dir=f"{script_args.output_dir}tensorboard_logs/"  # [TensorBoard] log directory
         # TODO: uncomment that on the next release
         # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )

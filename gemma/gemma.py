@@ -286,7 +286,7 @@ def main():
         auto_find_batch_size=script_args.auto_find_batch_size,
         optim="paged_adamw_8bit",
         adam_epsilon=1.1e-8,
-        logging_dir=f"{script_args.output_dir}finetuning_metric/"  # [TensorBoard] log directory
+        logging_dir=f"{script_args.output_dir}tensorboard_logs/"  # [TensorBoard] log directory
     )
 
     logger.warning(

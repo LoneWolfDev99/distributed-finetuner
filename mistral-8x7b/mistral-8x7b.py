@@ -332,7 +332,7 @@ def main():
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
         optim="paged_adamw_8bit",
-        logging_dir=f"{script_args.output_dir}finetuning_metric/"  # [TensorBoard] log directory
+        logging_dir=f"{script_args.output_dir}tensorboard_logs/"  # [TensorBoard] log directory
     )
     
     # Step 7: Define the Trainer

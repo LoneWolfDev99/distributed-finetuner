@@ -224,10 +224,10 @@ def resume_previous_run(script_args):
 
 def make_finetuning_metric_json(output_dir):
     all_metrics = {}
-    ea = event_accumulator.EventAccumulator(f"{output_dir}finetuning_metric/")
+    ea = event_accumulator.EventAccumulator(f"{output_dir}tensorboard_logs/")
     ea.Reload()
     logger.info(f"PREPARING_METRIC_JSON | Tags={ea.Tags()}")
-    all_metric_json_path = f"{output_dir}finetuning_metric/all_finetuning_metric.json"
+    all_metric_json_path = f"{output_dir}tensorboard_logs/all_finetuning_metric.json"
     for key_name in ea.Tags()['scalars']:
         update_metric_dict(ea, all_metrics, key_name)
     make_metric_json_file(all_metric_json_path, all_metrics)
