@@ -252,8 +252,6 @@ def main():
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
         logging_dir=f"{script_args.output_dir}finetuning_metric/"  # [TensorBoard] log directory
-        # TODO: uncomment that on the next release
-        # gradient_checkpointing_kwargs=script_args.gradient_checkpointing_kwargs,
     )
 
     # Log on each process the small summary:

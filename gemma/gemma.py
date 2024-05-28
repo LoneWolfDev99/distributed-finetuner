@@ -182,19 +182,18 @@ def main():
         max_eval_samples = min(len(eval_dataset), script_args.max_eval_samples)
         eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    if script_args.resume:
+    if script_args.resume and os.path.exists(script_args.output_dir):
         try:
             output_dir_list = os.listdir(script_args.output_dir)
-            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
+            checkpoints_dir_list = [directory for directory in output_dir_list if ('checkpoint-' in directory)]
+            checkpoints = sorted(checkpoints_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
+                last_checkpoint = None
                 logger.info("no checkpoint not found. training will start from step 0")
-        except FileNotFoundError:
-            logger.info(f"failed to find last_checkpoint: output directory does not exist")
-            last_checkpoint = None
         except Exception as e:
-            logger.info(f"failed to find last_checkpoint: {str(e)}")
+            logger.error(f"failed to find last_checkpoint: {str(e)}")
             last_checkpoint = None
             raise Exception("failed to check if last checkpoint exists")
     else:
