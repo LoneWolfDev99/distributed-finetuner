@@ -142,7 +142,7 @@ def main():
 
     if script_args.prompt_template_base64:
         prompt_template = decode_base64(script_args.prompt_template_base64)
-        logger.info(f"adding training_text column to dataset {prompt_template}")
+        logger.info(f"adding text column to dataset {prompt_template}")
         columns = re.findall(r'\[(.*?)\]', prompt_template)
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
@@ -153,11 +153,11 @@ def main():
                 output_text = prompt_template
                 for c in columns:
                     output_text = output_text.replace('[{}]'.format(c), example[c])
-                example["training_text"] = output_text
+                example["text"] = output_text
             return example
         train_dataset = train_dataset.map(prepare_prompt)
         for index in random.sample(range(len(train_dataset)), 2):
-            logger.info(f"Sample {index} after adding training_text to dataset: {train_dataset[index]['training_text']}.")
+            logger.info(f"Sample {index} after adding text to dataset: {train_dataset[index]['text']}.")
 
     eval_dataset = None
 

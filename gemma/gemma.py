@@ -147,7 +147,7 @@ def main():
 
     if script_args.prompt_template_base64:
         prompt_template = decode_base64(script_args.prompt_template_base64)
-        logger.info(f"adding training_text column to dataset {prompt_template}")
+        logger.info(f"adding text column to dataset {prompt_template}")
         columns = re.findall(r'\[(.*?)\]', prompt_template)
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
