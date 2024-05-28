@@ -203,11 +203,10 @@ def main():
 
     # Weights & Biases integration
     if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
-        script_args.log_with = 'wandb'
+        script_args.log_with = ["tensorboard", "wandb"]
         initialize_wandb(script_args, last_checkpoint)
     else:
-        script_args.log_with = None
-        os.environ["WANDB_DISABLED"] = "True"
+        script_args.log_with = ["tensorboard"]
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
     # Bitsandbytes configuration
