@@ -6,5 +6,6 @@ tqdm
 wandb
 tokenizers
 accelerate
-e2enetworks 
+e2enetworks==1.2.5
+tensorboard
 bitsandbytes

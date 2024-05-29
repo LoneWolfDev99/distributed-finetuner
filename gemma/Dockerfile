@@ -10,4 +10,6 @@ COPY requirements.txt /home/jovyan/
 RUN cd /home/jovyan && pip install -r requirements.txt
 
 COPY gemma.py /home/jovyan/gemma.py
+COPY helpers.py /home/jovyan/helpers.py
+
 CMD [ "python3", "gemma.py" ]

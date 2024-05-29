@@ -104,7 +104,7 @@ spec:
     - name: finetuner_image
       value: 'aimle2e/fine-tuner'
     - name: finetuner_tag
-      value: 'llama2_v2'
+      value: 'llama2_v4'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type

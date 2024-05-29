@@ -4,10 +4,10 @@ import os
 import random
 import re
 import sys
-import transformers
 from dataclasses import dataclass, field
 from typing import Optional
 
+import transformers
 import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
@@ -17,12 +17,15 @@ from transformers import (AutoModelForCausalLM, BitsAndBytesConfig,
                           HfArgumentParser, TrainingArguments, AutoTokenizer)
 from trl import SFTTrainer, is_xpu_available
 
-from helpers import (decode_base64, download_dataset, get_dataset_format,
-                     gpu_memory, load_custom_dataset, push_model, initialize_wandb)
+from helpers import (ExporterCallback, decode_base64, download_dataset,
+                     get_dataset_format, gpu_memory, initialize_wandb,
+                     load_custom_dataset, make_finetuning_metric_json,
+                     push_model)
 
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
+
 
 # Define and parse arguments.
 @dataclass
@@ -45,7 +48,7 @@ class ScriptArguments:
     log_level: Optional[str] = field(default="info", metadata={"help": "log level"})
     dataset_split: Optional[float] = field(default=0, metadata={"help": "training split ratio"})
     dataset_text_field: Optional[str] = field(default="text", metadata={"help": "the text field of the dataset"})
-    log_with: Optional[str] = field(default="none", metadata={"help": "use 'wandb' to log with wandb"})
+    log_with: Optional[str] = field(default="tensorboard", metadata={"help": "use 'wandb/tensorboard/etc' to log"})
     learning_rate: Optional[float] = field(default=1.41e-5, metadata={"help": "the learning rate"})
     batch_size: Optional[int] = field(default=4, metadata={"help": "the batch size"})
     seq_length: Optional[int] = field(default=512, metadata={"help": "Input sequence length"})
@@ -63,7 +66,7 @@ class ScriptArguments:
     bnb_4bit_compute_dtype: Optional[str] = field(default="bfloat16", metadata={"help": "This sets the computational type"})
     bnb_4bit_quant_type: Optional[str] = field(default="fp4", metadata={"help": "This sets the quantization data type in the bnb.nn.Linear4Bit layers"})
     bnb_4bit_use_double_quant: Optional[bool] = field(default=False, metadata={"help": "Quantization constants from the first quantization are quantized again"})
-    logging_steps: Optional[int] = field(default=100, metadata={"help": "the number of logging steps"})
+    logging_steps: Optional[int] = field(default=5, metadata={"help": "the number of logging steps"})
     use_auth_token: Optional[bool] = field(default=True, metadata={"help": "Use HF auth token to access the model"})
     num_train_epochs: Optional[int] = field(default=3, metadata={"help": "the number of training epochs"})
     max_steps: Optional[int] = field(default=-1, metadata={"help": "the number of training steps"})
@@ -108,6 +111,7 @@ class ScriptArguments:
 
 
 def main():
+
     parser = HfArgumentParser(ScriptArguments)
     output = parser.parse_args_into_dataclasses(return_remaining_strings=True)
     script_args = output[0]
@@ -129,7 +133,6 @@ def main():
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
         dataset_path = download_dataset(script_args)
-        dataset_type = get_dataset_format(dataset_path)
         logger.info(f"loading dataset from {dataset_path}")
         train_dataset = load_custom_dataset(dataset_path)
     else:
@@ -178,10 +181,12 @@ def main():
     if script_args.resume and os.path.exists(script_args.output_dir):
         try:
             output_dir_list = os.listdir(script_args.output_dir)
-            checkpoints = sorted(output_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
+            checkpoints_dir_list = [directory for directory in output_dir_list if ('checkpoint-' in directory)]
+            checkpoints = sorted(checkpoints_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
             if len(checkpoints) > 0:
                 last_checkpoint = checkpoints[0]
             else:
+                last_checkpoint = None
                 logger.info("no checkpoint not found. training will start from step 0")
         except Exception as e:
             logger.error(f"failed to find last_checkpoint: {str(e)}")
@@ -194,11 +199,10 @@ def main():
 
     # Weights & Biases integration
     if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
-        script_args.log_with = 'wandb'
+        script_args.log_with = ["tensorboard", "wandb"]
         initialize_wandb(script_args, last_checkpoint)
     else:
-        script_args.log_with = None
-        os.environ["WANDB_DISABLED"] = "True"
+        script_args.log_with = ["tensorboard"]
         logger.warning("WANDB: WANDB_API_KEY not found, disabling wandb.")
 
     # Bitsandbytes configuration
@@ -247,9 +251,10 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
+        logging_dir=f"{script_args.output_dir}tensorboard_logs/"  # [TensorBoard] log directory
     )
 
-   # Log on each process the small summary:
+    # Log on each process the small summary:
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
@@ -279,7 +284,8 @@ def main():
         dataset_text_field=script_args.dataset_text_field if script_args.dataset_text_field else 'training_text',
         eval_dataset=eval_dataset,
         peft_config=peft_config,
-        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False)
+        data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+        callbacks=[ExporterCallback]
     )
 
     if last_checkpoint is not None:
@@ -317,6 +323,7 @@ def main():
 
     logger.info(f"eval metrics {metrics}")
 
+    make_finetuning_metric_json(script_args.output_dir)
     push_model(script_args.output_dir, metrics)
 
 

@@ -10,4 +10,6 @@ COPY requirements.txt /home/jovyan/
 RUN cd /home/jovyan && pip install -r requirements.txt
 
 COPY mistral-8x7b.py /home/jovyan/mistral-8x7b.py
+COPY helpers.py /home/jovyan/helpers.py
+
 CMD [ "python3", "mistral-8x7b.py" ]
