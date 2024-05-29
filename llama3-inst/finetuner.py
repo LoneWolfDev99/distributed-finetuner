@@ -37,7 +37,7 @@ class ScriptArguments:
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
-    model_name: Optional[str] = field(default="meta-llama/Meta-Llama-3-8B-Instructwh", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="meta-llama/Meta-Llama-3-8B-Instruct", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
         default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
     )

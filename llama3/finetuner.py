@@ -147,6 +147,7 @@ def main():
         logger.info(f"found {len(columns)} columns in prompt template. replacing them")
         if len(columns) == 0:
             raise Exception("invalid prompt template")
+
         def prepare_prompt(example):
             if len(columns) > 0:
                 output_text = prompt_template
