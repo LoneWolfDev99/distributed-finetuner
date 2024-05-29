@@ -10,4 +10,6 @@ COPY requirements.txt /home/jovyan/
 RUN cd /home/jovyan && pip install -r requirements.txt
 
 COPY mistral.py /home/jovyan/mistral.py
+COPY helpers.py /home/jovyan/helpers.py
+
 CMD [ "python3", "mistral.py" ]
