@@ -104,7 +104,7 @@ spec:
     - name: finetuner_image
       value: 'aimle2e/fine-tuner'
     - name: finetuner_tag
-      value: 'gemma_7b_v2'
+      value: 'gemma_7b_v4'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type

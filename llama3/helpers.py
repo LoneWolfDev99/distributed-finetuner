@@ -127,7 +127,7 @@ def push_model(model_path: str, info: dict = {}):
     timestamp = datetime.now().strftime("%s")
     model_id = get_run_value('model_id')
     if not model_id:
-        model_repo = model_repo_client.create(f"llama2-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+        model_repo = model_repo_client.create(f"llama3-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
         model_id = model_repo.id
         set_run_value('model_id', model_id)
     else:
