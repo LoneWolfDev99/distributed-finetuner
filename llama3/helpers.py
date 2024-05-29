@@ -32,11 +32,13 @@ logger.setLevel(logging.INFO)
 def download_dataset(script_args) -> str:
     try:
         DATASET_DOWNLOAD_PATH = '/mnt/workspace/custom_dataset/'
-        minio_service = MinioService(access_key=script_args.dataset_accesskey,
-                                     secret_key=script_args.dataset_secretkey)
-        minio_service.download_directory_recursive(bucket_name=script_args.dataset_bucket,
-                                                   local_path=DATASET_DOWNLOAD_PATH,
-                                                   prefix=script_args.dataset_path)
+        minio_service = MinioService(
+            access_key=script_args.dataset_accesskey,
+            secret_key=script_args.dataset_secretkey)
+        minio_service.download_directory_recursive(
+            bucket_name=script_args.dataset_bucket,
+            local_path=DATASET_DOWNLOAD_PATH,
+            prefix=script_args.dataset_path)
         logger.info("Dataset download success")
         return f"{DATASET_DOWNLOAD_PATH}{script_args.dataset_path}" if script_args.dataset_path else DATASET_DOWNLOAD_PATH
     except Exception as e:
@@ -52,13 +54,13 @@ def get_dataset_format(path: str):
 
 
 def prepare_prompt(example, columns, prompt_template):
-            if len(columns) > 0:
-                output_text = prompt_template
-                for c in columns:
-                    output_text = output_text.replace(
-                        '[{}]'.format(c), example[c])
-                example["training_text"] = output_text
-            return example
+    if len(columns) > 0:
+        output_text = prompt_template
+        for c in columns:
+            output_text = output_text.replace(
+                '[{}]'.format(c), example[c])
+        example["training_text"] = output_text
+    return example
 
 
 def check_file_type(file_path) -> tuple[bool, str]:

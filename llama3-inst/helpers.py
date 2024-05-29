@@ -7,14 +7,16 @@ import pathlib
 import subprocess as sp
 import sys
 import time
-import wandb
 from datetime import datetime
 
 import pandas as pd
 import pyarrow.parquet as parquet
+import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
+from tensorboard.backend.event_processing import event_accumulator
+from transformers import TrainerCallback
 
 ARROW = 'arrow'
 CSV = 'csv'
@@ -22,7 +24,9 @@ JSON = 'json'
 PARQUET = 'parquet'
 ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
+LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def download_dataset(script_args) -> str:
@@ -69,7 +73,7 @@ def check_file_type(file_path) -> tuple[bool, str]:
     return False, file_extension
 
 
-def get_allowed_files(dataset_folder)-> str:
+def get_allowed_files(dataset_folder) -> str:
     files = []
     for file in os.listdir(dataset_folder):
         file_path = os.path.join(dataset_folder, file)
@@ -98,36 +102,48 @@ def retry_decorator(func_object):
     return wrapper
 
 
+def set_run_value(key_name: str, value: str | int) -> bool:
+    if os.path.exists(LAST_RUN_INFO_PATH):
+        with open(LAST_RUN_INFO_PATH) as run_file:
+            run_info_dict = json.loads(run_file.read())
+    else:
+        run_info_dict = {}
+    run_info_dict[key_name] = value
+    with open(LAST_RUN_INFO_PATH, 'w') as run_file:
+        run_file.write(json.dumps(run_info_dict))
+        logger.info(f"VALUE_SET | key_name={key_name} -> value={value}")
+
+
+def get_run_value(key_name):
+    if not os.path.exists(LAST_RUN_INFO_PATH):
+        return None
+    with open(LAST_RUN_INFO_PATH) as run_file:
+        run_info_dict = json.loads(run_file.read())
+    return run_info_dict.get(key_name)
+
+
 @retry_decorator
 def push_model(model_path: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
-    model_repo = model_repo_client.create(
-        f"llama3-{job_id}-{timestamp}",
-        model_type="custom",
-        job_id=job_id,
-        score=info)
-    model_id = model_repo.id
-    model_repo_client.push_model(
-        model_path=model_path, prefix='',
-        model_id=model_id)
+    model_id = get_run_value('model_id')
+    if not model_id:
+        model_repo = model_repo_client.create(f"llama3-inst-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+        model_id = model_repo.id
+        set_run_value('model_id', model_id)
+    else:
+        model_repo_client._update_repo(model_id, score=info)
+    model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
 
 
 def load_custom_dataset(dataset_path):
     file_type = get_dataset_format(dataset_path)
     try:
         if file_type == CSV:
-            return load_dataset(
-                CSV,
-                data_files=dataset_path,
-                on_bad_lines="warn",
-                split="train")
+            return load_dataset(CSV, data_files=dataset_path, on_bad_lines="warn", split="train")
         else:
-            return load_dataset(
-                file_type,
-                data_files=dataset_path,
-                split="train")
+            return load_dataset(file_type, data_files=dataset_path, split="train")
     except Exception as e:
         logger.error(f"ERROR_IN_LOADING_DATASET={e}")
         sys.exit(e)
@@ -149,8 +165,8 @@ def gpu_memory():
 def json_loader(file_path):
     file = open(file_path, 'r')
     json_data = json.load(file)
-    if not isinstance(json_data, list):
-        raise Exception("Invalid json data, expected list/tabular")
+    if type(json_data) != list:
+        raise Exception(f"Invalid json data, expected list/tabular")
     for row in json_data:
         yield row
 
@@ -197,7 +213,7 @@ def resume_previous_run(script_args):
     wandb_api = wandb.Api(overrides={"project": script_args.wandb_project})
     for run in wandb_api.runs(path=script_args.wandb_project):
         logger.info(f"PRIOR RUN: {run} {run.name} {run.id} {run.state}")
-        if (run.state in ["crashed", "failed"]) and (run.name == script_args.wandb_run_name):
+        if run.state in ["crashed", "failed"] and run.name == script_args.wandb_run_name:
             logger.info(f"CHECKPOINT: Resuming {run.id}")
             return wandb.init(
                 id=run.id,
@@ -206,3 +222,39 @@ def resume_previous_run(script_args):
                 name=run.name,
             )
     return None
+
+
+def make_finetuning_metric_json(output_dir):
+    all_metrics = {}
+    ea = event_accumulator.EventAccumulator(f"{output_dir}tensorboard_logs/")
+    ea.Reload()
+    logger.info(f"PREPARING_METRIC_JSON | Tags={ea.Tags()}")
+    all_metric_json_path = f"{output_dir}tensorboard_logs/all_finetuning_metric.json"
+    for key_name in ea.Tags()['scalars']:
+        update_metric_dict(ea, all_metrics, key_name)
+    make_metric_json_file(all_metric_json_path, all_metrics)
+
+
+def make_metric_json_file(all_metric_json_path: str, all_metrics: dict):
+    with open(all_metric_json_path, 'w') as file:
+        file.write(json.dumps(all_metrics))
+
+
+def update_metric_dict(ea, all_metric_json, key_name):
+    try:
+        truncated_df = df = pd.DataFrame(ea.Scalars(key_name))
+        if len(df) >= 2000:
+            truncated_df = df[0::20]
+        all_metric_json[key_name] = truncated_df.to_dict()
+    except Exception as e:
+        logger.error(f"MAKE_FINETUNING_METRIC_JSON | KEY_NAME={key_name} | ERROR={e}")
+
+
+class ExporterCallback(TrainerCallback):
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+        try:
+            make_finetuning_metric_json(args.output_dir)
+            push_model(args.output_dir, {})
+        except Exception as e:
+            logger.error(f"EXPORTER_CALLBACK_FAILED | ERROR={e}")

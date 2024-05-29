@@ -39,7 +39,7 @@ spec:
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
     # or a path to your model relative to the PVC root.
     - name: model
-      value: 'mistralai/Mistral-7B-Instruct-v0.3'
+      value: 'mistralai/Mistral-7B-Instruct-v0.2'
     - name: dataset_name
       value: 'vicgalle/alpaca-gpt4'
     - name: dataset_text_field

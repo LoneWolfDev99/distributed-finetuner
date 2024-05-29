@@ -34,9 +34,9 @@ class ScriptArguments:
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
-    model_name: Optional[str] = field(default="mistralai/Mistral-7B-Instruct-v0.3", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="google/gemma-7b-it", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
-        default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
+        default="Shekswess/medical_mistral_instruct_dataset", metadata={"help": "the dataset name"}
     )
     dataset_type: Optional[str] = field(default="huggingface", metadata={"help": "the dataset source. Options: huggingface or eos-bucket"})
     dataset_bucket: Optional[str] = field(default="", metadata={"help": "the bucket when dataset type is eos bucket"})
