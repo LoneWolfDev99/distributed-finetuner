@@ -7,4 +7,5 @@ wandb
 tokenizers
 accelerate
 e2enetworks
+tensorboard
 bitsandbytes

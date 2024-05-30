@@ -41,7 +41,7 @@ spec:
     - name: model
       value: 'mistralai/Mistral-7B-Instruct-v0.2'
     - name: dataset_name
-      value: 'vicgalle/alpaca-gpt4'
+      value: 'luisroque/instruct-python-llama2-20k'
     - name: dataset_text_field
       value: 'text'
     - name: dataset_type
@@ -104,7 +104,7 @@ spec:
     - name: finetuner_image
       value: 'aimle2e/fine-tuner'
     - name: finetuner_tag
-      value: 'mistral_7b_inst_v3'
+      value: 'mistral_7b_inst_v4'
     - name: finetuner_image_policy
       value: 'Always'
     - name: sku_type
