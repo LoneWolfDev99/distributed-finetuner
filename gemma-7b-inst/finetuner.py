@@ -36,9 +36,9 @@ class ScriptArguments:
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
-    model_name: Optional[str] = field(default="meta-llama/Meta-Llama-3-8B", metadata={"help": "the model name"})
+    model_name: Optional[str] = field(default="google/gemma-7b-it", metadata={"help": "the model name"})
     dataset_name: Optional[str] = field(
-        default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
+        default="luisroque/instruct-python-llama2-20k", metadata={"help": "the dataset name"}
     )
     dataset_type: Optional[str] = field(default="huggingface", metadata={"help": "the dataset source. Options: huggingface or eos-bucket"})
     dataset_bucket: Optional[str] = field(default="", metadata={"help": "the bucket when dataset type is eos bucket"})
@@ -172,8 +172,6 @@ def main():
         train_dataset = train_dataset.select(range(max_train_samples))
         for index in random.sample(range(len(train_dataset)), 1):
             logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
-        #
-        # train_dataset = train_dataset.shuffle(seed=training_args.seed)
 
     if eval_dataset and script_args.max_eval_samples > 0:
         max_eval_samples = min(len(eval_dataset), script_args.max_eval_samples)
