@@ -310,7 +310,7 @@ def main():
     if not os.path.exists(str(os.path.join(script_args.output_dir, 'base_model/'))):
         model.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
         tokenizer.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
-        logger.info("saved base model to base_model/")
+        logger.info("Saved initial model to base_model/")
 
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
