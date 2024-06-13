@@ -37,7 +37,7 @@ spec:
     - name: run_name
       value: ''
     - name: source_model_repo_id
-      value: 'none'
+      value: '0'
     - name: source_model_path
       value: ''
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
@@ -83,7 +83,7 @@ spec:
     - name: lora_dropout
       value: 0.05
     - name: lora_bias
-      value: 'None'
+      value: 'none'
     - name: load_in_4bit
       value: 'false'
     - name: bnb_4bit_compute_dtype
