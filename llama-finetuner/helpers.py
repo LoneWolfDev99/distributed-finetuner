@@ -16,7 +16,7 @@ from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
 from tensorboard.backend.event_processing import event_accumulator
-from transformers import TrainerCallback
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
 
 ARROW = 'arrow'
 CSV = 'csv'
@@ -25,6 +25,7 @@ PARQUET = 'parquet'
 ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
+LOCAL_MODEL_PATH = '/mnt/workspace/local_model/'
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -133,6 +134,11 @@ def push_model(model_path: str, info: dict = {}):
     else:
         model_repo_client._update_repo(model_id, score=info)
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
+
+
+def download_folder_from_repo(model_id: int, model_path: str):
+    model_repo_client = tir.Models()
+    model_repo_client.download_model(model_id, local_path=LOCAL_MODEL_PATH, prefix=model_path)
 
 
 def load_custom_dataset(dataset_path):
@@ -256,3 +262,8 @@ class ExporterCallback(TrainerCallback):
             push_model(args.output_dir, {})
         except Exception as e:
             logger.error(f"EXPORTER_CALLBACK_FAILED | ERROR={e}")
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step == state.max_steps:
+            print(f"saving={state.global_step}")
+            control.should_save = True
