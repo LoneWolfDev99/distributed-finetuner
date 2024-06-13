@@ -36,6 +36,10 @@ spec:
     # to wandb or sharing PVCs between runs.
     - name: run_name
       value: ''
+    - name: source_model_repo_id
+      value: '0'
+    - name: source_model_path
+      value: ''
     # Training parameters. Model IDs are HuggingFace identifiers to pull down,
     # or a path to your model relative to the PVC root.
     - name: model
@@ -177,6 +181,8 @@ spec:
               --wandb_run_name={{workflow.parameters.wandb_run_name}}
               --seq_length={{workflow.parameters.seq_length}}
               --run_name={{workflow.parameters.run_name}}
+              --source_model_repo_id={{workflow.parameters.source_model_repo_id}} 
+              --source_model_path={{workflow.parameters.source_model_path}}
           - name: wandb_key
             value: "{{workflow.parameters.wandb_key}}"
           - name: trainer_ram
