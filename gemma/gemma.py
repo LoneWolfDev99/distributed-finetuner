@@ -1,34 +1,32 @@
+import base64
 import logging
 import math
 import os
+import pathlib
 import random
+import re
+import subprocess as sp
 import sys
 import time
-import base64
-import wandb
-import torch
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
-import re
-import pathlib
-import subprocess as sp
-import os
 
+import torch
 import transformers
 import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from e2enetworks.cloud.tir.minio_service import MinioService
-from peft import LoraConfig
+from peft import LoraConfig, PeftModel
 from tqdm import tqdm
-from transformers import (
-    AutoModelForCausalLM, AutoTokenizer,
-    HfArgumentParser, Seq2SeqTrainingArguments, BitsAndBytesConfig)
+from transformers import (AutoModelForCausalLM, AutoTokenizer,
+                          BitsAndBytesConfig, HfArgumentParser,
+                          Seq2SeqTrainingArguments)
 from trl import SFTTrainer, is_xpu_available
 
-from helpers import (ExporterCallback, decode_base64, download_dataset,
+from helpers import (LOCAL_MODEL_PATH, ExporterCallback, decode_base64,
+                     download_dataset, download_folder_from_repo,
                      get_dataset_format, gpu_memory, initialize_wandb,
                      load_custom_dataset, make_finetuning_metric_json,
                      push_model)
@@ -46,6 +44,8 @@ class ScriptArguments:
     """
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
     model_name: Optional[str] = field(default="google/gemma-7b", metadata={"help": "the model name"})
+    source_model_repo_id: Optional[int] = field(default=0, metadata={"help": "source_model_repo_id"})
+    source_model_path: Optional[str] = field(default="", metadata={"help": "source_model_path"})
     dataset_name: Optional[str] = field(
         default="vicgalle/alpaca-gpt4", metadata={"help": "the dataset name"}
     )
@@ -228,20 +228,28 @@ def main():
         bnb_config = None
         logger.info("Bitsandbytes quantization is disabled.")
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        script_args.model_name,
-        padding_side="right",
-        add_eos_token=True,
-        add_bos_token=True,
-    )
+    if script_args.source_model_repo_id:
+        download_folder_from_repo(script_args.source_model_repo_id, script_args.source_model_path)
+        download_folder_from_repo(script_args.source_model_repo_id, 'base_model/')
+        base_model_path = f"{LOCAL_MODEL_PATH}base_model/"
+        base_model = AutoModelForCausalLM.from_pretrained(base_model_path)
+        logger.info(f"Loaded base model : {base_model}")
+        model = PeftModel.from_pretrained(base_model, f"{LOCAL_MODEL_PATH}{script_args.source_model_path}")
+        model = model.merge_and_unload()
+        logger.info(f"Loaded merged model : {model}")
+        tokenizer = AutoTokenizer.from_pretrained(base_model_path,
+                                                  padding_side="right")
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            script_args.model_name,
+            quantization_config=bnb_config,
+            trust_remote_code=script_args.trust_remote_code,
+            token=script_args.use_auth_token,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            script_args.model_name,
+            padding_side="right")
     tokenizer.pad_token = tokenizer.eos_token
-
-    model = AutoModelForCausalLM.from_pretrained(
-        script_args.model_name,
-        quantization_config=bnb_config,
-        device_map="auto",
-        trust_remote_code=script_args.trust_remote_code,
-        token=script_args.use_auth_token,)
 
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
         if script_args.dataset_text_field:
@@ -334,6 +342,11 @@ def main():
         callbacks=[ExporterCallback]
     )
     model.config.use_cache = False
+
+    if not os.path.exists(str(os.path.join(script_args.output_dir, 'base_model/'))):
+        model.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
+        tokenizer.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
+        logger.info("Saved initial model to base_model/")
 
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
