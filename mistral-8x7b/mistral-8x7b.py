@@ -28,7 +28,8 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           BitsAndBytesConfig, DataCollatorForLanguageModeling,
                           HfArgumentParser, TrainingArguments)
 
-from helpers import (ExporterCallback, decode_base64, download_dataset,
+from helpers import (LOCAL_MODEL_PATH, ExporterCallback, decode_base64,
+                     download_dataset, download_folder_from_repo,
                      get_dataset_format, gpu_memory, initialize_wandb,
                      load_custom_dataset, make_finetuning_metric_json,
                      push_model)
@@ -47,6 +48,8 @@ class ScriptArguments:
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
     model_name: Optional[str] = field(default="mistralai/Mixtral-8x7B-v0.1", metadata={"help": "the model name"})
+    source_model_repo_id: Optional[int] = field(default=0, metadata={"help": "source_model_repo_id"})
+    source_model_path: Optional[str] = field(default="", metadata={"help": "source_model_path"})
     dataset_name: Optional[str] = field(
         default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
     )
@@ -235,20 +238,38 @@ def main():
         logger.info("Bitsandbytes quantization is disabled.")
 
     # Step 3:Load the base model
-    model = AutoModelForCausalLM.from_pretrained(
-        script_args.model_name,
-        quantization_config=bnb_config,
-        trust_remote_code=script_args.trust_remote_code,
-        token=script_args.use_auth_token,
-        device_map={'': torch.cuda.current_device()}
-    )
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        script_args.model_name,
-        padding_side="right",
-        add_eos_token=True,
-        add_bos_token=True,
-    )
+    if script_args.source_model_repo_id:
+        download_folder_from_repo(script_args.source_model_repo_id, script_args.source_model_path)
+        download_folder_from_repo(script_args.source_model_repo_id, 'base_model/')
+        base_model_path = f"{LOCAL_MODEL_PATH}base_model/"
+        base_model = AutoModelForCausalLM.from_pretrained(base_model_path,
+                                                          quantization_config=bnb_config,
+                                                          trust_remote_code=script_args.trust_remote_code,
+                                                          token=script_args.use_auth_token,
+                                                          device_map={'': torch.cuda.current_device()}
+                                                          )
+        logger.info(f"Loaded base model : {base_model}")
+        model = PeftModel.from_pretrained(base_model, f"{LOCAL_MODEL_PATH}{script_args.source_model_path}")
+        model = model.merge_and_unload()
+        logger.info(f"Loaded merged model : {model}")
+        tokenizer = AutoTokenizer.from_pretrained(base_model_path,
+                                                  padding_side="right",
+                                                  add_eos_token=True,
+                                                  add_bos_token=True)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            script_args.model_name,
+            quantization_config=bnb_config,
+            trust_remote_code=script_args.trust_remote_code,
+            token=script_args.use_auth_token,
+            device_map={'': torch.cuda.current_device()}
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            script_args.model_name,
+            padding_side="right",
+            add_eos_token=True,
+            add_bos_token=True,
+        )
     tokenizer.pad_token = tokenizer.eos_token
 
     def tokenize(sample, cutoff_len=512, add_eos_token=True):
@@ -346,6 +367,11 @@ def main():
     )
 
     model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
+
+    if not os.path.exists(str(os.path.join(script_args.output_dir, 'base_model/'))):
+        model.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
+        tokenizer.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
+        logger.info("Saved initial model to base_model/")
 
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
