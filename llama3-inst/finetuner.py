@@ -4,25 +4,25 @@ import os
 import random
 import re
 import sys
-import transformers
 from dataclasses import dataclass, field
 from typing import Optional
 
+import transformers
 import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
-from peft import LoraConfig
+from peft import LoraConfig, PeftModel
 from tqdm import tqdm
-from transformers import (
-    AutoModelForCausalLM, BitsAndBytesConfig,
-    HfArgumentParser, TrainingArguments, AutoTokenizer)
+from transformers import (AutoModelForCausalLM, AutoTokenizer,
+                          BitsAndBytesConfig, HfArgumentParser,
+                          TrainingArguments)
 from trl import SFTTrainer
 
-from helpers import (
-    ExporterCallback, decode_base64, download_dataset,
-    gpu_memory, initialize_wandb, load_custom_dataset,
-    make_finetuning_metric_json, push_model,
-    )
+from helpers import (LOCAL_MODEL_PATH, ExporterCallback, decode_base64,
+                     download_dataset, download_folder_from_repo,
+                     get_dataset_format, gpu_memory, initialize_wandb,
+                     load_custom_dataset, make_finetuning_metric_json,
+                     push_model)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,8 @@ class ScriptArguments:
     output_dir: Optional[str] = field(default=None, metadata={"help": "Out directory to store model"})
 
     model_name: Optional[str] = field(default="meta-llama/Meta-Llama-3-8B-Instruct", metadata={"help": "the model name"})
+    source_model_repo_id: Optional[int] = field(default=0, metadata={"help": "source_model_repo_id"})
+    source_model_path: Optional[str] = field(default="", metadata={"help": "source_model_path"})
     dataset_name: Optional[str] = field(
         default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
     )
@@ -225,15 +227,28 @@ def main():
         bnb_config = None
         logger.info("Bitsandbytes quantization is disabled.")
 
-    model = AutoModelForCausalLM.from_pretrained(
-        script_args.model_name,
-        quantization_config=bnb_config,
-        trust_remote_code=script_args.trust_remote_code,
-        token=script_args.use_auth_token,
-    )
-    tokenizer = AutoTokenizer.from_pretrained(
-        script_args.model_name,
-        padding_side="right")
+    # Loading Model and Tokenizer
+    if script_args.source_model_repo_id:
+        download_folder_from_repo(script_args.source_model_repo_id, script_args.source_model_path)
+        download_folder_from_repo(script_args.source_model_repo_id, 'base_model/')
+        base_model_path = f"{LOCAL_MODEL_PATH}base_model/"
+        base_model = AutoModelForCausalLM.from_pretrained(base_model_path)
+        logger.info(f"Loaded base model : {base_model}")
+        model = PeftModel.from_pretrained(base_model, f"{LOCAL_MODEL_PATH}{script_args.source_model_path}")
+        model = model.merge_and_unload()
+        logger.info(f"Loaded merged model : {model}")
+        tokenizer = AutoTokenizer.from_pretrained(base_model_path,
+                                                  padding_side="right")
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            script_args.model_name,
+            quantization_config=bnb_config,
+            trust_remote_code=script_args.trust_remote_code,
+            token=script_args.use_auth_token,
+        )
+        tokenizer = AutoTokenizer.from_pretrained(
+            script_args.model_name,
+            padding_side="right")
     tokenizer.pad_token = tokenizer.eos_token
 
     # Step 3: Define the training arguments
@@ -288,6 +303,11 @@ def main():
         data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
         callbacks=[ExporterCallback]
     )
+
+    if not os.path.exists(str(os.path.join(script_args.output_dir, 'base_model/'))):
+        model.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
+        tokenizer.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
+        logger.info("Saved initial model to base_model/")
 
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
