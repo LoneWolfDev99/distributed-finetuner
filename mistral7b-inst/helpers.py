@@ -25,6 +25,7 @@ PARQUET = 'parquet'
 ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
+LOCAL_MODEL_PATH = '/mnt/workspace/local_model/'
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -129,12 +130,17 @@ def push_model(model_path: str, info: dict = {}):
     timestamp = datetime.now().strftime("%s")
     model_id = get_run_value('model_id')
     if not model_id:
-        model_repo = model_repo_client.create(f"mistral7b-inst-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+        model_repo = model_repo_client.create(f"mistral7binst-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
         model_id = model_repo.id
         set_run_value('model_id', model_id)
     else:
         model_repo_client._update_repo(model_id, score=info)
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
+
+
+def download_folder_from_repo(model_id: int, model_path: str):
+    model_repo_client = tir.Models()
+    model_repo_client.download_model(model_id, local_path=LOCAL_MODEL_PATH, prefix=model_path)
 
 
 def load_custom_dataset(dataset_path):
@@ -258,3 +264,8 @@ class ExporterCallback(TrainerCallback):
             push_model(args.output_dir, {})
         except Exception as e:
             logger.error(f"EXPORTER_CALLBACK_FAILED | ERROR={e}")
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step == state.max_steps:
+            print(f"saving={state.global_step}")
+            control.should_save = True
