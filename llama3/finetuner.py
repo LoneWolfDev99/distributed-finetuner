@@ -269,6 +269,7 @@ def main():
         gradient_checkpointing=script_args.gradient_checkpointing,
         run_name=script_args.run_name,
         auto_find_batch_size=script_args.auto_find_batch_size,
+        dispatch_batches=True,
         logging_dir=f"{script_args.output_dir}tensorboard_logs/"  # [TensorBoard] log directory
     )
 
