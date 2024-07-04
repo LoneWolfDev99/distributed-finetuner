@@ -30,15 +30,6 @@ logger = logging.getLogger(__name__)
 tqdm.pandas()
 
 
-class CustomDDPTrainer(SFTTrainer):
-
-    def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
-        if self.train_dataset is None:
-            return None
-        else:
-            return DistributedSampler(self.train_dataset)
-
-
 # Define and parse arguments.
 @dataclass
 class ScriptArguments:
@@ -278,7 +269,7 @@ def main():
         auto_find_batch_size=script_args.auto_find_batch_size,
         dispatch_batches=False,
         split_batches=False,
-        dataloader_drop_last=True,
+        dataloader_drop_last=False,
         logging_dir=f"{script_args.output_dir}tensorboard_logs/"  # [TensorBoard] log directory
     )
 
@@ -304,7 +295,7 @@ def main():
     logger.info(f"initiating trainer. gpu memory free-  {gpu_memory()}")
 
     # Step 5: Define the Trainer
-    trainer = CustomDDPTrainer(
+    trainer = SFTTrainer(
         model=model,
         args=training_args,
         max_seq_length=script_args.seq_length,
@@ -365,3 +356,4 @@ if __name__ == "__main__":
     access_token = "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"
     login(access_token)
     main()
+
