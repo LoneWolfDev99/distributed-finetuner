@@ -19,7 +19,7 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           TrainingArguments)
 from trl import SFTTrainer
 
-from helpers import (LOCAL_MODEL_PATH, ExporterCallback, decode_base64,
+from helpers import (LOCAL_MODEL_PATH, UnifiedTrainingCallback, decode_base64,
                      download_dataset, download_folder_from_repo, 
                      gpu_memory, initialize_wandb, load_custom_dataset,
                      make_finetuning_metric_json, push_model)
@@ -313,7 +313,7 @@ def main():
         eval_dataset=eval_dataset,
         peft_config=peft_config,
         data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
-        callbacks=[ExporterCallback]
+        callbacks=[UnifiedTrainingCallback]
     )
 
     if not os.path.exists(str(os.path.join(script_args.output_dir, 'base_model/'))):
