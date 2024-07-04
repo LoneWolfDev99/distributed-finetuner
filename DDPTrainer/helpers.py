@@ -265,7 +265,7 @@ def update_metric_dict(ea, all_metric_json, key_name):
         logger.error(f"MAKE_FINETUNING_METRIC_JSON | KEY_NAME={key_name} | ERROR={e}")
 
 
-class UnifiedTrainingCallback(TrainerCallback):
+class TrainingCallback(TrainerCallback):
 
     @main_process_decorator
     def on_epoch_end(self, args, state, control, **kwargs):
