@@ -7,35 +7,30 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
+import torch
 import transformers
-import wandb
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from peft import LoraConfig, PeftModel
+from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           BitsAndBytesConfig, HfArgumentParser,
                           TrainingArguments)
-from trl import SFTTrainer, is_xpu_available
+from trl import SFTTrainer
 
 from helpers import (LOCAL_MODEL_PATH, ExporterCallback, decode_base64,
-                     download_dataset, download_folder_from_repo,
-                     get_dataset_format, gpu_memory, initialize_wandb,
-                     load_custom_dataset, make_finetuning_metric_json,
-                     push_model)
+                     download_dataset, download_folder_from_repo, 
+                     gpu_memory, initialize_wandb, load_custom_dataset,
+                     make_finetuning_metric_json, push_model)
 
-from accelerate import PartialState
-import torch
-from torch.utils.data.distributed import DistributedSampler
-
-device_string = PartialState().process_index
 
 logger = logging.getLogger(__name__)
 
 tqdm.pandas()
 
 
-class MyTrainer(SFTTrainer):
+class CustomDDPTrainer(SFTTrainer):
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None:
@@ -90,7 +85,7 @@ class ScriptArguments:
     num_train_epochs: Optional[int] = field(default=3, metadata={"help": "the number of training epochs"})
     max_steps: Optional[int] = field(default=-1, metadata={"help": "the number of training steps"})
     save_steps: Optional[int] = field(
-        default=1, metadata={"help": "Number of updates steps before two checkpoint saves"}
+        default=10, metadata={"help": "Number of updates steps before two checkpoint saves"}
     )
     save_total_limit: Optional[int] = field(default=10, metadata={"help": "Limits total number of checkpoints."})
     push_to_hub: Optional[bool] = field(default=False, metadata={"help": "Push the model to HF Hub"})
@@ -142,8 +137,7 @@ def main():
     )
 
     logger.setLevel(logging.INFO)
-    # gpufree = gpu_memory()
-    # logger.info(f"starting the job. gpu memory free -  {gpufree}")
+    logger.info(f"starting the job. gpu memory free -  {gpu_memory()}")
     logger.info(f"Script parameters {script_args}")
 
     # initiate tir
@@ -260,7 +254,6 @@ def main():
             quantization_config=bnb_config,
             trust_remote_code=script_args.trust_remote_code,
             token=script_args.use_auth_token,
-            # device_map={'':device_string}
         )
         tokenizer = AutoTokenizer.from_pretrained(
             script_args.model_name,
@@ -311,7 +304,7 @@ def main():
     logger.info(f"initiating trainer. gpu memory free-  {gpu_memory()}")
 
     # Step 5: Define the Trainer
-    trainer = MyTrainer(
+    trainer = CustomDDPTrainer(
         model=model,
         args=training_args,
         max_seq_length=script_args.seq_length,
@@ -327,7 +320,7 @@ def main():
         model.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
         tokenizer.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
         logger.info("Saved initial model to base_model/")
-    print(trainer.__dict__)
+
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
     else:
@@ -347,7 +340,7 @@ def main():
     trainer.save_metrics("train", metrics)
     trainer.save_state()
 
-    if False:
+    if eval_dataset:
         metrics = trainer.evaluate()
         max_eval_samples = script_args.max_eval_samples if script_args.max_eval_samples > 0 else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
@@ -372,4 +365,3 @@ if __name__ == "__main__":
     access_token = "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"
     login(access_token)
     main()
-
