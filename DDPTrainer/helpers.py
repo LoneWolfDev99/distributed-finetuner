@@ -1,5 +1,6 @@
 import base64
 import csv
+import io
 import json
 import logging
 import os
@@ -7,7 +8,9 @@ import pathlib
 import subprocess as sp
 import sys
 import time
+from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
+from multiprocessing import Process
 
 import pandas as pd
 import pyarrow.parquet as parquet
@@ -26,6 +29,17 @@ ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = '/mnt/workspace/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 LOCAL_MODEL_PATH = '/mnt/workspace/local_model/'
+REPO_NAME_PATTERN_TO_MODEL_MAPPING = {
+    "meta-llama/Llama-2-7b-hf": "test",
+    "mistralai/Mistral-7B-v0.1": "test",
+    "mistralai/Mistral-7B-Instruct-v0.2": "test",
+    "stabilityai/stable-diffusion-2-1": "test",
+    "mistralai/Mixtral-8x7B-v0.1": "test",
+    "google/gemma-7b": "test",
+    "google/gemma-7b-it": "test",
+    "meta-llama/Meta-Llama-3-8B": "test",
+    "meta-llama/Meta-Llama-3-8B-Instruct": "test",
+}
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -117,18 +131,28 @@ def get_run_value(key_name):
 
 
 @retry_decorator
-def push_model(model_path: str, info: dict = {}):
+def push_model(model_path: str, repo_name_pattern: str, info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
     model_id = get_run_value('model_id')
     if not model_id:
-        model_repo = model_repo_client.create(f"mistral7binst-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
+        model_repo = model_repo_client.create(f"{repo_name_pattern}-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
         model_id = model_repo.id
         set_run_value('model_id', model_id)
     else:
         model_repo_client._update_repo(model_id, score=info)
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
+
+
+def async_push_model(model_path: str, repo_name_pattern: str, info: dict = {}):
+    output_buffer = io.StringIO()
+    with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
+        try:
+            push_model(model_path, repo_name_pattern, {})
+        except Exception as e:
+            print(f"ASYNC_PUSH_MODEL_FAILED | ERROR={e}")
+    print(output_buffer, flush=True)
 
 
 @retry_decorator
@@ -263,9 +287,13 @@ class TrainingCallback(TrainerCallback):
     def on_epoch_end(self, args, state, control, **kwargs):
         try:
             make_finetuning_metric_json(args.output_dir)
-            push_model(args.output_dir, {})
+            repo_name_pattern = "test"
+            daemon_process = Process(target=async_push_model, args=(args.output_dir, repo_name_pattern, {}))
+            daemon_process.daemon = True
+            daemon_process.start()
+            logger.info(f"MODEL_DATA_EXPORTER_STARTED | PROCESS_ID={daemon_process.pid}")
         except Exception as e:
-            logger.error(f"EXPORTER_CALLBACK_FAILED | ERROR={e}")
+            logger.error(f"CALLBACK_FAILED | ERROR={e}")
 
     @main_process_decorator
     def on_step_end(self, args, state, control, **kwargs):
