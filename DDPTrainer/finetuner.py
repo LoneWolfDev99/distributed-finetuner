@@ -19,10 +19,9 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           TrainingArguments)
 from trl import SFTTrainer
 
-from helpers import (LOCAL_MODEL_PATH, TrainingCallback, decode_base64,
-                     download_dataset, download_folder_from_repo,
+from helpers import (DATASET_DOWNLOAD_PATH, LOCAL_MODEL_PATH, TrainingCallback, decode_base64,
                      gpu_memory, initialize_wandb, load_custom_dataset,
-                     make_finetuning_metric_json, push_model, save_base_model)
+                     make_finetuning_metric_json, push_model)
 
 RANK = int(os.environ['LOCAL_RANK'])
 logger = logging.getLogger(f"[rank{RANK}]{__name__}")
@@ -45,10 +44,8 @@ class ScriptArguments:
         default="mlabonne/guanaco-llama2-1k", metadata={"help": "the dataset name"}
     )
     dataset_type: Optional[str] = field(default="huggingface", metadata={"help": "the dataset source. Options: huggingface or eos-bucket"})
-    dataset_bucket: Optional[str] = field(default="", metadata={"help": "the bucket when dataset type is eos bucket"})
+    dataset_id: Optional[int] = field(default=0, metadata={"help": "dataset_id when dataset type is eos bucket"})
     dataset_path: Optional[str] = field(default="", metadata={"help": "the bucket path when dataset type is eos bucket"})
-    dataset_accesskey: Optional[str] = field(default="", metadata={"help": "the bucket access key when dataset type is eos bucket"})
-    dataset_secretkey: Optional[str] = field(default="", metadata={"help": "the bucket secret key when dataset type is eos bucket"})
 
     log_level: Optional[str] = field(default="info", metadata={"help": "log level"})
     dataset_split: Optional[float] = field(default=0, metadata={"help": "training split ratio"})
@@ -136,7 +133,7 @@ def main():
 
     # Step 2: Load the dataset
     if script_args.dataset_type == "eos-bucket":
-        dataset_path = download_dataset(script_args)
+        dataset_path = f"{DATASET_DOWNLOAD_PATH}{script_args.dataset_path}" if script_args.dataset_path else DATASET_DOWNLOAD_PATH
         logger.info(f"loading dataset from {dataset_path}")
         train_dataset = load_custom_dataset(dataset_path)
     else:
@@ -229,8 +226,6 @@ def main():
 
     # Loading Model and Tokenizer
     if script_args.source_model_repo_id:
-        download_folder_from_repo(script_args.source_model_repo_id, script_args.source_model_path)
-        download_folder_from_repo(script_args.source_model_repo_id, 'base_model/')
         starting_model_path = f"{LOCAL_MODEL_PATH}base_model/"
         starting_model = AutoModelForCausalLM.from_pretrained(starting_model_path)
         logger.info(f"Loaded base model : {starting_model}")
@@ -348,8 +343,9 @@ def main():
 
     logger.info(f"eval metrics {metrics}")
 
-    make_finetuning_metric_json(script_args.output_dir)
-    push_model(script_args.output_dir, metrics)
+    if RANK == 0:
+        make_finetuning_metric_json(script_args.output_dir)
+        push_model(script_args.output_dir, metrics)
 
 
 if __name__ == "__main__":
