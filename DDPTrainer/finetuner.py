@@ -20,9 +20,9 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
 from trl import SFTTrainer
 
 from helpers import (LOCAL_MODEL_PATH, TrainingCallback, decode_base64,
-                     download_dataset, download_folder_from_repo, 
+                     download_dataset, download_folder_from_repo,
                      gpu_memory, initialize_wandb, load_custom_dataset,
-                     make_finetuning_metric_json, push_model)
+                     make_finetuning_metric_json, push_model, save_base_model)
 
 
 logger = logging.getLogger(__name__)
@@ -231,13 +231,13 @@ def main():
     if script_args.source_model_repo_id:
         download_folder_from_repo(script_args.source_model_repo_id, script_args.source_model_path)
         download_folder_from_repo(script_args.source_model_repo_id, 'base_model/')
-        base_model_path = f"{LOCAL_MODEL_PATH}base_model/"
-        base_model = AutoModelForCausalLM.from_pretrained(base_model_path)
-        logger.info(f"Loaded base model : {base_model}")
-        model = PeftModel.from_pretrained(base_model, f"{LOCAL_MODEL_PATH}{script_args.source_model_path}")
+        starting_model_path = f"{LOCAL_MODEL_PATH}base_model/"
+        starting_model = AutoModelForCausalLM.from_pretrained(starting_model_path)
+        logger.info(f"Loaded base model : {starting_model}")
+        model = PeftModel.from_pretrained(starting_model, f"{LOCAL_MODEL_PATH}{script_args.source_model_path}")
         model = model.merge_and_unload()
         logger.info(f"Loaded merged model : {model}")
-        tokenizer = AutoTokenizer.from_pretrained(base_model_path,
+        tokenizer = AutoTokenizer.from_pretrained(starting_model_path,
                                                   padding_side="right")
     else:
         model = AutoModelForCausalLM.from_pretrained(
@@ -276,7 +276,7 @@ def main():
     # Log on each process the small summary:
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-        + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+        + f"distributed training: {bool(training_args.world_size > 1)}, 16-bits training: {training_args.fp16}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
 
@@ -307,17 +307,18 @@ def main():
         callbacks=[TrainingCallback]
     )
 
-    if not os.path.exists(str(os.path.join(script_args.output_dir, 'base_model/'))):
-        model.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
-        tokenizer.save_pretrained(str(os.path.join(script_args.output_dir, 'base_model/')))
-        logger.info("Saved initial model to base_model/")
+    # Step 6: Save the base model
+    base_model_path = os.path.join(script_args.output_dir, "base_model/")
+    trainer.save_model(base_model_path)
+    logger.info(f"Saved initial model to {base_model_path}")
 
+    # Step 7: Start Training
     if last_checkpoint is not None:
         train_result = trainer.train(str(os.path.join(script_args.output_dir, last_checkpoint)))
     else:
         train_result = trainer.train()
 
-    # Step 6: Save the model
+    # Step 8: Save the final model
     final_path = os.path.join(script_args.output_dir, "final")
     trainer.save_model(final_path)
     metrics = train_result.metrics
@@ -356,4 +357,3 @@ if __name__ == "__main__":
     access_token = "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"
     login(access_token)
     main()
-
