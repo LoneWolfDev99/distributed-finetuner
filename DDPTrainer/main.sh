@@ -98,6 +98,8 @@ while [ $# -gt 0 ]; do
     --source_model_path=*)
       source_model_path="${1#*=}"
       ;;
+    --trainer_gpus=*)
+      trainer_gpus="${1#*=}"
     *)
       echo "Invalid argument: $1" >&2
       exit 1
@@ -139,6 +141,7 @@ echo "seq_length: $seq_length"
 echo "run_name: $run_name"
 echo "source_model_repo_id: $source_model_repo_id"
 echo "source_model_path: $source_model_path"
+echo "trainer_gpus: $trainer_gpus"
 
 
 export dataset_type = $dataset_type
@@ -149,3 +152,4 @@ export source_model_path = $source_model_path
 python initializer.py
 
 
+torchrun --nproc_per_node=$trainer_gpus finetuner.py --model_name=$model_name --dataset_name=$dataset_name --dataset_text_field=$dataset_text_field --dataset_split=$dataset_split --dataset_type=$dataset_type --dataset_path=$dataset_path --output_dir=$output_dir --num_train_epochs=$num_train_epochs --batch_size=$batch_size --gradient_accumulation_steps=$gradient_accumulation_steps --use_peft=$true --peft_lora_r=$peft_lora_r --peft_lora_alpha=$peft_lora_alpha --save_total_limit=$save_total_limit --max_train_samples=$max_train_samples --max_eval_samples=$max_eval_samples --prompt_template_base64=$prompt_template_base64 --resume=$true --save_steps=$save_steps
