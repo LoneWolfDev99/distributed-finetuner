@@ -23,7 +23,7 @@ CSV = 'csv'
 JSON = 'json'
 PARQUET = 'parquet'
 ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
-DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
+DATASET_DOWNLOAD_PATH = '/mnt/workspace/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 LOCAL_MODEL_PATH = '/mnt/workspace/local_model/'
 
@@ -32,21 +32,10 @@ logger = logging.getLogger(f"[rank{RANK}]{__name__}")
 logger.setLevel(logging.INFO)
 
 
-def download_dataset(script_args) -> str:
-    try:
-        DATASET_DOWNLOAD_PATH = '/mnt/workspace/custom_dataset/'
-        minio_service = MinioService(
-            access_key=script_args.dataset_accesskey,
-            secret_key=script_args.dataset_secretkey)
-        minio_service.download_directory_recursive(
-            bucket_name=script_args.dataset_bucket,
-            local_path=DATASET_DOWNLOAD_PATH,
-            prefix=script_args.dataset_path)
-        logger.info("Dataset download success")
-        return f"{DATASET_DOWNLOAD_PATH}{script_args.dataset_path}" if script_args.dataset_path else DATASET_DOWNLOAD_PATH
-    except Exception as e:
-        logger.error(e)
-        raise Exception(f"dataset_error -> {e}")
+def download_dataset(dataset_id, dataset_path='') -> str:
+    datasets_client = tir.Datasets()
+    datasets_client.download_model(dataset_id, local_path=DATASET_DOWNLOAD_PATH, prefix=dataset_path)
+    return f"{DATASET_DOWNLOAD_PATH}{dataset_path}" if dataset_path else DATASET_DOWNLOAD_PATH
 
 
 def get_dataset_format(path: str):
