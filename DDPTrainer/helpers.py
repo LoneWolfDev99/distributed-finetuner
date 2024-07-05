@@ -27,8 +27,7 @@ DATASET_DOWNLOAD_PATH = '/mnt/workspace/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 LOCAL_MODEL_PATH = '/mnt/workspace/local_model/'
 
-RANK = int(os.environ['LOCAL_RANK'])
-logger = logging.getLogger(f"[rank{RANK}]{__name__}")
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
