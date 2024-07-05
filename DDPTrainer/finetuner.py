@@ -7,12 +7,10 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
-import torch
 import transformers
 from datasets import load_dataset
 from e2enetworks.cloud import tir
 from peft import LoraConfig, PeftModel
-from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           BitsAndBytesConfig, HfArgumentParser,
@@ -198,7 +196,7 @@ def main():
     logger.info(f"LAST CHECKPOINT: {last_checkpoint}")
 
     # Weights & Biases integration
-    if script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
+    if RANK == 0 and script_args.wandb_project and os.environ.get('WANDB_API_KEY'):
         script_args.log_with = ["tensorboard", "wandb"]
         initialize_wandb(script_args, last_checkpoint)
     else:
@@ -270,7 +268,7 @@ def main():
 
     # Log on each process the small summary:
     logger.warning(
-        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
+        f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
         + f"distributed training: {bool(training_args.world_size > 1)}, 16-bits training: {training_args.fp16}"
     )
     logger.info(f"Training/evaluation parameters {training_args}")
