@@ -26,7 +26,9 @@ ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = 'home/jovyan/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 LOCAL_MODEL_PATH = '/mnt/workspace/local_model/'
-logger = logging.getLogger(__name__)
+
+RANK = int(os.environ['LOCAL_RANK'])
+logger = logging.getLogger(f"[rank{RANK}]{__name__}")
 logger.setLevel(logging.INFO)
 
 
@@ -216,7 +218,7 @@ def initialize_wandb(script_args, last_checkpoint=None):
             run = resume_previous_run(script_args)
         else:
             run = wandb.init(
-                name=script_args.wandb_run_name, 
+                name=script_args.wandb_run_name,
                 project=script_args.wandb_project)
     except Exception as e:
         logger.warning(f"WANDB: Failed to create run: {e}")

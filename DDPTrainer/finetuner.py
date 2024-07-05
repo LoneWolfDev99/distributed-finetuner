@@ -24,8 +24,8 @@ from helpers import (LOCAL_MODEL_PATH, TrainingCallback, decode_base64,
                      gpu_memory, initialize_wandb, load_custom_dataset,
                      make_finetuning_metric_json, push_model, save_base_model)
 
-
-logger = logging.getLogger(__name__)
+RANK = int(os.environ['LOCAL_RANK'])
+logger = logging.getLogger(f"[rank{RANK}]{__name__}")
 
 tqdm.pandas()
 
@@ -122,7 +122,7 @@ def main():
     script_args = output[0]
 
     logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
