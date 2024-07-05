@@ -139,3 +139,13 @@ echo "seq_length: $seq_length"
 echo "run_name: $run_name"
 echo "source_model_repo_id: $source_model_repo_id"
 echo "source_model_path: $source_model_path"
+
+
+export dataset_type = $dataset_type
+export dataset_id = $dataset_id
+export dataset_path = $dataset_path
+export source_model_repo_id = $source_model_repo_id
+export source_model_path = $source_model_path
+python initializer.py
+
+
