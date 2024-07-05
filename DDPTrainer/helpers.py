@@ -31,12 +31,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def download_dataset(dataset_id, dataset_path='') -> str:
-    datasets_client = tir.Datasets()
-    datasets_client.download_model(dataset_id, local_path=DATASET_DOWNLOAD_PATH, prefix=dataset_path)
-    return f"{DATASET_DOWNLOAD_PATH}{dataset_path}" if dataset_path else DATASET_DOWNLOAD_PATH
-
-
 def get_dataset_format(path: str):
     # function to return the file extension
     file_extension = pathlib.Path(path).suffix
@@ -137,6 +131,14 @@ def push_model(model_path: str, info: dict = {}):
     model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
 
 
+@retry_decorator
+def download_dataset(dataset_id, dataset_path='') -> str:
+    datasets_client = tir.Datasets()
+    datasets_client.download_model(dataset_id, local_path=DATASET_DOWNLOAD_PATH, prefix=dataset_path)
+    return f"{DATASET_DOWNLOAD_PATH}{dataset_path}" if dataset_path else DATASET_DOWNLOAD_PATH
+
+
+@retry_decorator
 def download_folder_from_repo(model_id: int, model_path: str):
     model_repo_client = tir.Models()
     model_repo_client.download_model(model_id, local_path=LOCAL_MODEL_PATH, prefix=model_path)
