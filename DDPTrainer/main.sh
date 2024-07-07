@@ -17,6 +17,9 @@ while [ $# -gt 0 ]; do
     --dataset_type=*)
       dataset_type="${1#*=}"
       ;;
+    --dataset_id=*)
+      dataset_id="${1#*=}"
+      ;;
     --dataset_path=*)
       dataset_path="${1#*=}"
       ;;
