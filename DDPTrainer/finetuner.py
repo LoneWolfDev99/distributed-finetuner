@@ -18,7 +18,8 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
 from trl import SFTTrainer
 
 from helpers import (DATASET_DOWNLOAD_PATH, LOCAL_MODEL_PATH, TrainingCallback, decode_base64,
-                     gpu_memory, initialize_wandb, load_custom_dataset,
+                     get_sorted_checkpoint_list, gpu_memory,
+                     initialize_wandb, load_custom_dataset,
                      make_finetuning_metric_json, push_model)
 
 RANK = int(os.environ['LOCAL_RANK'])
@@ -178,11 +179,9 @@ def main():
     # Discover if we have any checkpoints to resume from.
     if script_args.resume and os.path.exists(script_args.output_dir):
         try:
-            output_dir_list = os.listdir(script_args.output_dir)
-            checkpoints_dir_list = [directory for directory in output_dir_list if ('checkpoint-' in directory)]
-            checkpoints = sorted(checkpoints_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0, reverse=True)
+            checkpoints = get_sorted_checkpoint_list(script_args.output_dir)
             if len(checkpoints) > 0:
-                last_checkpoint = checkpoints[0]
+                last_checkpoint = checkpoints[-1]
             else:
                 last_checkpoint = None
                 logger.info("no checkpoint not found. training will start from step 0")
