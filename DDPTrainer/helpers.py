@@ -29,17 +29,6 @@ ALLOWED_FILE_TYPES = [ARROW, CSV, JSON, PARQUET]
 DATASET_DOWNLOAD_PATH = '/mnt/workspace/custom_dataset/'
 LAST_RUN_INFO_PATH = '/mnt/workspace/last_run.json'
 LOCAL_MODEL_PATH = '/mnt/workspace/local_model/'
-REPO_NAME_PATTERN_TO_MODEL_MAPPING = {
-    "meta-llama/Llama-2-7b-hf": "test",
-    "mistralai/Mistral-7B-v0.1": "test",
-    "mistralai/Mistral-7B-Instruct-v0.2": "test",
-    "stabilityai/stable-diffusion-2-1": "test",
-    "mistralai/Mixtral-8x7B-v0.1": "test",
-    "google/gemma-7b": "test",
-    "google/gemma-7b-it": "test",
-    "meta-llama/Meta-Llama-3-8B": "test",
-    "meta-llama/Meta-Llama-3-8B-Instruct": "test",
-}
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -131,10 +120,12 @@ def get_run_value(key_name):
 
 
 @retry_decorator
-def push_model(model_path: str, repo_name_pattern: str, info: dict = {}):
+def get_or_update_model_repo(info: dict = {}):
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
+    model_name = os.environ['model_name']
+    repo_name_pattern = model_name.replace('-', '_').replace('/', '_')
     model_id = get_run_value('model_id')
     if not model_id:
         model_repo = model_repo_client.create(f"{repo_name_pattern}-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
@@ -142,17 +133,23 @@ def push_model(model_path: str, repo_name_pattern: str, info: dict = {}):
         set_run_value('model_id', model_id)
     else:
         model_repo_client._update_repo(model_id, score=info)
-    model_repo_client.push_model(model_path=model_path, prefix='', model_id=model_id)
+    return model_repo
 
 
-def async_push_model(model_path: str, repo_name_pattern: str, info: dict = {}):
+def push_to_model_repo(model_path: str, prefix='', info: dict = {}):
+    model_repo_client = tir.Models()
+    model_repo = get_or_update_model_repo(info)
+    model_repo_client.push_model(model_path=model_path, prefix=prefix, model_id=model_repo.id)
+
+
+def async_push(model_path: str, prefix='', info: dict = {}):
     output_buffer = io.StringIO()
     with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
         try:
-            push_model(model_path, repo_name_pattern, {})
+            push_to_model_repo(model_path, prefix, info)
         except Exception as e:
             print(f"ASYNC_PUSH_MODEL_FAILED | ERROR={e}")
-    print(output_buffer, flush=True)
+    print(output_buffer.getvalue(), flush=True)
 
 
 @retry_decorator
@@ -255,6 +252,12 @@ def resume_previous_run(script_args):
     return None
 
 
+def get_sorted_checkpoint_list(output_dir):
+    output_dir_list = os.listdir(output_dir)
+    checkpoints_dir_list = [directory for directory in output_dir_list if ('checkpoint-' in directory)]
+    return sorted(checkpoints_dir_list, key=lambda x: int(x.split("checkpoint-")[1]) if len(x.split("checkpoint-")) > 1 else 0)
+
+
 def make_finetuning_metric_json(output_dir):
     all_metrics = {}
     ea = event_accumulator.EventAccumulator(f"{output_dir}tensorboard_logs/")
@@ -284,19 +287,24 @@ def update_metric_dict(ea, all_metric_json, key_name):
 class TrainingCallback(TrainerCallback):
 
     @main_process_decorator
-    def on_epoch_end(self, args, state, control, **kwargs):
+    def on_save(self, args, state, control, **kwargs):
+        if state.global_step == state.max_steps:
+            return
         try:
-            make_finetuning_metric_json(args.output_dir)
-            repo_name_pattern = "test"
-            daemon_process = Process(target=async_push_model, args=(args.output_dir, repo_name_pattern, {}))
+            checkpoints = get_sorted_checkpoint_list(args.output_dir)
+            recent_checkpoint = checkpoints[-1]
+            daemon_process = Process(target=async_push, args=(f"{args.output_dir}{recent_checkpoint}/", f'{recent_checkpoint}/', {}))
             daemon_process.daemon = True
             daemon_process.start()
-            logger.info(f"MODEL_DATA_EXPORTER_STARTED | PROCESS_ID={daemon_process.pid}")
+            logger.info(f"CHECKPOINT_EXPORT_STARTED_FOR  {recent_checkpoint} | PROCESS_ID={daemon_process.pid}")
         except Exception as e:
-            logger.error(f"CALLBACK_FAILED | ERROR={e}")
+            logger.error(f"CHECKPOINT_EXPORT_FAILED | ERROR={e}")
 
     @main_process_decorator
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step == state.max_steps:
             print(f"Saving checkpoint-{state.global_step}")
             control.should_save = True
+        elif state.global_step % 100 == 0:
+            make_finetuning_metric_json(args.output_dir)
+            push_to_model_repo(f"{args.output_dir}tensorboard_logs/", 'tensorboard_logs/', {})
