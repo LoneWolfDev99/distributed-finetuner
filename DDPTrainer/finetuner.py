@@ -20,7 +20,7 @@ from trl import SFTTrainer
 from helpers import (DATASET_DOWNLOAD_PATH, LOCAL_MODEL_PATH, TrainingCallback, decode_base64,
                      get_sorted_checkpoint_list, gpu_memory,
                      initialize_wandb, load_custom_dataset,
-                     make_finetuning_metric_json, push_model)
+                     make_finetuning_metric_json, push_to_model_repo)
 
 RANK = int(os.environ['LOCAL_RANK'])
 logger = logging.getLogger(f"[rank{RANK}]{__name__}")
@@ -342,7 +342,7 @@ def main():
 
     if RANK == 0:
         make_finetuning_metric_json(script_args.output_dir)
-        push_model(script_args.output_dir, metrics)
+        push_to_model_repo(script_args.output_dir, '', metrics)
 
 
 if __name__ == "__main__":

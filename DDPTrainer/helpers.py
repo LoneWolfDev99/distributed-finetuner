@@ -125,7 +125,7 @@ def get_or_update_model_repo(info: dict = {}):
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
     model_name = os.environ['model_name']
-    repo_name_pattern = model_name.replace('-', '_').replace('/', '_')
+    repo_name_pattern = model_name.replace('/', '-').lower()
     model_id = get_run_value('model_id')
     if not model_id:
         model_repo = model_repo_client.create(f"{repo_name_pattern}-{job_id}-{timestamp}", model_type="custom", job_id=job_id, score=info)
@@ -133,13 +133,13 @@ def get_or_update_model_repo(info: dict = {}):
         set_run_value('model_id', model_id)
     else:
         model_repo_client._update_repo(model_id, score=info)
-    return model_repo
+    return model_id
 
 
 def push_to_model_repo(model_path: str, prefix='', info: dict = {}):
     model_repo_client = tir.Models()
-    model_repo = get_or_update_model_repo(info)
-    model_repo_client.push_model(model_path=model_path, prefix=prefix, model_id=model_repo.id)
+    model_repo_id = get_or_update_model_repo(info)
+    model_repo_client.push_model(model_path=model_path, prefix=prefix, model_id=model_repo_id)
 
 
 def async_push(model_path: str, prefix='', info: dict = {}):
@@ -306,5 +306,8 @@ class TrainingCallback(TrainerCallback):
             print(f"Saving checkpoint-{state.global_step}")
             control.should_save = True
         elif state.global_step % 100 == 0:
-            make_finetuning_metric_json(args.output_dir)
-            push_to_model_repo(f"{args.output_dir}tensorboard_logs/", 'tensorboard_logs/', {})
+            try:
+                make_finetuning_metric_json(args.output_dir)
+                push_to_model_repo(f"{args.output_dir}tensorboard_logs/", 'tensorboard_logs/', {})
+            except Exception as e:
+                print(f"METRIC_EXPORT_FAILED | ERROR={e}")
