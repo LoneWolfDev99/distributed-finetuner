@@ -18,9 +18,8 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
 from trl import SFTTrainer
 
 from helpers import (DATASET_DOWNLOAD_PATH, LOCAL_MODEL_PATH, TrainingCallback, decode_base64,
-                     get_sorted_checkpoint_list, gpu_memory,
-                     initialize_wandb, load_custom_dataset,
-                     make_finetuning_metric_json, push_to_model_repo)
+                     get_or_update_model_repo, get_sorted_checkpoint_list, gpu_memory,
+                     initialize_wandb, load_custom_dataset, make_finetuning_metric_json)
 
 RANK = int(os.environ['LOCAL_RANK'])
 logger = logging.getLogger(f"[rank{RANK}]{__name__}")
@@ -342,7 +341,9 @@ def main():
 
     if RANK == 0:
         make_finetuning_metric_json(script_args.output_dir)
-        push_to_model_repo(script_args.output_dir, '', metrics)
+        model_repo_id = get_or_update_model_repo(metrics)
+        model_repo_client = tir.Models()
+        model_repo_client.push_model(model_path=script_args.output_dir, prefix='', model_id=model_repo_id)
 
 
 if __name__ == "__main__":

@@ -79,8 +79,7 @@ def retry_decorator(func_object):
     def wrapper(*args, **kwargs):
         for retry_count in range(3):
             try:
-                func_object(*args, **kwargs)
-                break
+                return func_object(*args, **kwargs)
             except Exception as e:
                 logger.error(f"OOPS_AN_ERROR_OCCURRED | {e}")
                 if retry_count == 2:
@@ -121,6 +120,7 @@ def get_run_value(key_name):
 
 @retry_decorator
 def get_or_update_model_repo(info: dict = {}):
+    breakpoint()
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
@@ -136,19 +136,11 @@ def get_or_update_model_repo(info: dict = {}):
     return model_id
 
 
-def push_to_model_repo(model_path: str, prefix='', info: dict = {}):
-    model_repo_client = tir.Models()
-    model_repo_id = get_or_update_model_repo(info)
-    model_repo_client.push_model(model_path=model_path, prefix=prefix, model_id=model_repo_id)
-
-
-def async_push(model_path: str, prefix='', info: dict = {}):
+def async_push(model_path: str, model_id, prefix=''):
     output_buffer = io.StringIO()
+    model_repo_client = tir.Models()
     with redirect_stdout(output_buffer), redirect_stderr(output_buffer):
-        try:
-            push_to_model_repo(model_path, prefix, info)
-        except Exception as e:
-            print(f"ASYNC_PUSH_MODEL_FAILED | ERROR={e}")
+        model_repo_client.push_model(model_path=model_path, prefix=prefix, model_id=model_id)
     print(output_buffer.getvalue(), flush=True)
 
 
@@ -293,7 +285,8 @@ class TrainingCallback(TrainerCallback):
         try:
             checkpoints = get_sorted_checkpoint_list(args.output_dir)
             recent_checkpoint = checkpoints[-1]
-            daemon_process = Process(target=async_push, args=(f"{args.output_dir}{recent_checkpoint}/", f'{recent_checkpoint}/', {}))
+            model_repo_id = get_or_update_model_repo({})
+            daemon_process = Process(target=async_push, args=(f"{args.output_dir}{recent_checkpoint}/", model_repo_id, f'{recent_checkpoint}/'))
             daemon_process.daemon = True
             daemon_process.start()
             logger.info(f"CHECKPOINT_EXPORT_STARTED_FOR  {recent_checkpoint} | PROCESS_ID={daemon_process.pid}")
@@ -308,6 +301,8 @@ class TrainingCallback(TrainerCallback):
         elif state.global_step % 100 == 0:
             try:
                 make_finetuning_metric_json(args.output_dir)
-                push_to_model_repo(f"{args.output_dir}tensorboard_logs/", 'tensorboard_logs/', {})
+                model_repo_id = get_or_update_model_repo({})
+                model_repo_client = tir.Models()
+                model_repo_client.push_model(model_path=f"{args.output_dir}tensorboard_logs/", prefix='tensorboard_logs/', model_id=model_repo_id)
             except Exception as e:
                 print(f"METRIC_EXPORT_FAILED | ERROR={e}")
