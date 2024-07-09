@@ -120,7 +120,6 @@ def get_run_value(key_name):
 
 @retry_decorator
 def get_or_update_model_repo(info: dict = {}):
-    breakpoint()
     model_repo_client = tir.Models()
     job_id = os.getenv("E2E_TIR_FINETUNE_JOB_ID")
     timestamp = datetime.now().strftime("%s")
@@ -280,7 +279,7 @@ class TrainingCallback(TrainerCallback):
 
     @main_process_decorator
     def on_save(self, args, state, control, **kwargs):
-        if state.global_step == state.max_steps:
+        if state.global_step >= state.max_steps-100:
             return
         try:
             checkpoints = get_sorted_checkpoint_list(args.output_dir)
