@@ -1,4 +1,4 @@
-FROM --platform=amd64 pytorch/pytorch:2.1.1-cuda12.1-cudnn8-runtime
+FROM --platform=amd64 pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
 
 USER root 
 RUN mkdir -p /home/jovyan && mkdir -p /data && chmod 777 /data
